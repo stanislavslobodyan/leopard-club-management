@@ -353,15 +353,15 @@ public sealed class ClubRepository
     public IReadOnlyList<HistorySessionCard> GetCompletedSessions()
     {
         using var db=Open(); using var cmd=db.CreateCommand();
-        cmd.CommandText="SELECT s.Id,c.Label,cl.Name,s.Game,s.StartedAt,s.EndedAt,t.PricePerHour,s.ChargeAmount,s.PointsAwarded FROM Sessions s JOIN Computers c ON c.Id=s.ComputerId JOIN Clients cl ON cl.Id=s.ClientId JOIN Tariffs t ON t.Id=s.TariffId WHERE s.EndedAt IS NOT NULL ORDER BY s.EndedAt DESC LIMIT 300;";
+        cmd.CommandText="SELECT s.Id,c.Label,cl.Name,s.Game,t.Name,s.StartedAt,s.EndedAt,t.PricePerHour,s.ChargeAmount,s.PointsAwarded FROM Sessions s JOIN Computers c ON c.Id=s.ComputerId JOIN Clients cl ON cl.Id=s.ClientId JOIN Tariffs t ON t.Id=s.TariffId WHERE s.EndedAt IS NOT NULL ORDER BY s.EndedAt DESC LIMIT 300;";
         using var reader=cmd.ExecuteReader(); var result=new List<HistorySessionCard>();
         while(reader.Read())
         {
-            var start=DateTime.Parse(reader.GetString(4)); var end=DateTime.Parse(reader.GetString(5));
+            var start=DateTime.Parse(reader.GetString(5)); var end=DateTime.Parse(reader.GetString(6));
             var minutes=Math.Max(0,(int)(end-start).TotalMinutes);
-            var hourlyRate=Convert.ToDecimal(reader.GetDouble(6));
-            var chargeAmount=reader.IsDBNull(7) ? CalculateCharge(start,end,hourlyRate) : Convert.ToDecimal(reader.GetDouble(7));
-            result.Add(new(reader.GetInt32(0),reader.GetString(1),reader.GetString(2),reader.GetString(3),start,end,minutes,chargeAmount,reader.GetInt32(8)));
+            var hourlyRate=Convert.ToDecimal(reader.GetDouble(7));
+            var chargeAmount=reader.IsDBNull(8) ? CalculateCharge(start,end,hourlyRate) : Convert.ToDecimal(reader.GetDouble(8));
+            result.Add(new(reader.GetInt32(0),reader.GetString(1),reader.GetString(2),reader.GetString(3),reader.GetString(4),start,end,minutes,chargeAmount,reader.GetInt32(9)));
         }
         return result;
     }

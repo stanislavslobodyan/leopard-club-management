@@ -45,12 +45,17 @@ public partial class MainViewModel : ViewModelBase
                 ApplySessionFilter();
             OnPropertyChanged(nameof(CurrentTimeText));
             OnPropertyChanged(nameof(CurrentDateText));
+            OnPropertyChanged(nameof(ActiveAccruedAmount));
+            OnPropertyChanged(nameof(HasUrgentSessions));
+            OnPropertyChanged(nameof(SessionAttentionText));
+            RefreshHourlyOccupancy();
         };
         _clock.Start();
     }
 
     public ObservableCollection<SessionCardViewModel> ActiveSessions { get; } = [];
     public ObservableCollection<ComputerCard> Computers { get; } = [];
+    public ObservableCollection<ComputerCard> VisibleComputers { get; } = [];
     public ObservableCollection<ComputerCard> AvailableComputers { get; } = [];
     public ObservableCollection<ReservationCard> Reservations { get; } = [];
     public ObservableCollection<ClientCard> Clients { get; } = [];
@@ -58,6 +63,7 @@ public partial class MainViewModel : ViewModelBase
     public ObservableCollection<TariffCard> Tariffs { get; } = [];
     public ObservableCollection<HistorySessionCard> HistorySessions { get; } = [];
     public ObservableCollection<ClubNotification> Notifications { get; } = [];
+    public ObservableCollection<OccupancyBarViewModel> HourlyOccupancy { get; } = [];
     public ObservableCollection<string> FilterOptions { get; }
     public ObservableCollection<string> GameOptions { get; } =
         ["Counter-Strike 2", "Valorant", "Dota 2", "Apex Legends", "Fortnite", "Інша гра"];
@@ -66,11 +72,47 @@ public partial class MainViewModel : ViewModelBase
          new(120, "2 години"), new(180, "3 години")];
 
     public string CurrentTimeText => DateTime.Now.ToString("HH:mm");
-    public string CurrentDateText => DateTime.Now.ToString("dddd, dd MMMM yyyy", CultureInfo.GetCultureInfo("uk-UA"));
+    public string CurrentDateText => DateTime.Now.ToString("d MMMM yyyy", CultureInfo.GetCultureInfo("uk-UA"));
+    public string CurrentClubText => "Клуб · основна зала";
     public int ActiveCount => _sessionCache.Count;
     public int FreeCount => Computers.Count(c => c.Status == "Вільний");
     public int ReservedCount => Computers.Count(c => c.Status == "Заброньований");
     public int ComputerCount => Computers.Count;
+    public string ActiveComputerRatio => $"{ActiveCount} / {ComputerCount}";
+    public double OccupancyPercent => ComputerCount == 0 ? 0 : Math.Round(ActiveCount * 100d / ComputerCount);
+    public string OccupancyText => $"{OccupancyPercent:0}% завантаженості";
+    public string ActiveAccruedAmount => _sessionCache.Sum(s => s.HourlyRate * (decimal)Math.Max(0, (DateTime.Now - s.StartedAt).TotalHours))
+        .ToString("0.00", CultureInfo.GetCultureInfo("uk-UA")) + " ₴";
+    public int ActiveClientCount => _sessionCache.Select(s => s.ClientName).Distinct(StringComparer.OrdinalIgnoreCase).Count();
+    public int TotalVisits => Clients.Sum(c => c.Visits);
+    public int TotalLoyaltyPoints => Clients.Sum(c => c.LoyaltyPoints);
+    public int HistoryTodayCount => HistorySessions.Count(s => s.EndedAt.Date == DateTime.Today);
+    public string HistoryHoursToday => FormatHours(HistorySessions.Where(s => s.EndedAt.Date == DateTime.Today).Sum(s => s.DurationMinutes)) + " год";
+    public ReservationCard? NextReservation => Reservations.Where(r => r.StartsAt >= DateTime.Now).OrderBy(r => r.StartsAt).FirstOrDefault();
+    public bool HasUpcomingReservation => NextReservation is not null;
+    public bool HasNoUpcomingReservation => NextReservation is null;
+    public bool HasUrgentSessions => _sessionCache.Any(s => s.PlannedEnd - DateTime.Now <= TimeSpan.FromMinutes(30));
+    public string SessionAttentionText
+    {
+        get
+        {
+            var urgent = _sessionCache.Where(s => s.PlannedEnd - DateTime.Now <= TimeSpan.FromMinutes(30)).ToArray();
+            if (urgent.Length == 0) return "";
+            var first = urgent[0];
+            var remaining = first.PlannedEnd - DateTime.Now;
+            return remaining <= TimeSpan.Zero
+                ? $"{first.ComputerLabel} · {first.ClientName}: запланований час завершився."
+                : $"{first.ComputerLabel} · {first.ClientName}: до завершення залишилося близько {Math.Ceiling(remaining.TotalMinutes)} хв.";
+        }
+    }
+    public int OnlineAgentCount => Computers.Count(c => c.AgentStatus == "Online");
+    public int ConfiguredAgentCount => Computers.Count(c => !string.IsNullOrWhiteSpace(c.AgentEndpoint));
+    public string AgentSummaryText => ConfiguredAgentCount == 0
+        ? "PC-агенти не налаштовані"
+        : $"{OnlineAgentCount} / {ConfiguredAgentCount} агентів онлайн";
+    public string AgentDetailText => ConfiguredAgentCount == 0
+        ? "Стан ПК доступний після налаштування агента"
+        : $"Перевірено ПК: {ComputerCount}";
     public int UnreadNotificationCount => Notifications.Count(n => !n.IsRead);
     public bool HasNotifications => Notifications.Count > 0;
     public bool HasHistory => HistorySessions.Count > 0;
@@ -110,33 +152,59 @@ public partial class MainViewModel : ViewModelBase
         "Комп’ютери" => "Комп’ютери",
         "Клієнти" => "Клієнти",
         "Тарифи" => "Тарифи",
-        "Історія" => "Історія сеансів",
+        "Історія" => "Історія",
         "Сеанси" => "Активні сеанси",
-        _ => "Огляд клубу"
+        "Налаштування" => "Налаштування",
+        _ => "Огляд"
+    };
+
+    public string PageSubtitle => SelectedPage switch
+    {
+        "Бронювання" => "Розклад залу та майбутні слоти клубу.",
+        "Комп’ютери" => "Статус робочих місць і конфігурації обладнання.",
+        "Клієнти" => "База клієнтів та історія відвідувань.",
+        "Тарифи" => "Правила вартості та погодинні пропозиції клубу.",
+        "Історія" => "Завершені сеанси та нарахування за використаний час.",
+        "Сеанси" => "Керуйте активними сеансами та контролюйте залишок часу.",
+        "Налаштування" => "Локальне збереження та підключення робочих місць.",
+        _ => "Усе, що відбувається у клубі зараз."
     };
 
     public bool IsDashboard => SelectedPage == "Огляд";
+    public bool IsDashboardWide => IsDashboard && IsWide;
+    public bool IsDashboardCompact => IsDashboard && IsCompact;
     public bool IsSessions => SelectedPage == "Сеанси";
     public bool IsBookings => SelectedPage == "Бронювання";
     public bool IsComputers => SelectedPage == "Комп’ютери";
     public bool IsClients => SelectedPage == "Клієнти";
     public bool IsTariffs => SelectedPage == "Тарифи";
     public bool IsHistory => SelectedPage == "Історія";
+    public bool IsSettings => SelectedPage == "Налаштування";
     public bool IsWide => !IsCompact;
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(PageTitle))]
     [NotifyPropertyChangedFor(nameof(IsDashboard))]
+    [NotifyPropertyChangedFor(nameof(IsDashboardWide))]
+    [NotifyPropertyChangedFor(nameof(IsDashboardCompact))]
     [NotifyPropertyChangedFor(nameof(IsSessions))]
     [NotifyPropertyChangedFor(nameof(IsBookings))]
     [NotifyPropertyChangedFor(nameof(IsComputers))]
     [NotifyPropertyChangedFor(nameof(IsClients))]
     [NotifyPropertyChangedFor(nameof(IsTariffs))]
     [NotifyPropertyChangedFor(nameof(IsHistory))]
+    [NotifyPropertyChangedFor(nameof(IsSettings))]
+    [NotifyPropertyChangedFor(nameof(PageSubtitle))]
     private string selectedPage = "Огляд";
 
     [ObservableProperty]
     private string filterText = "";
+
+    [ObservableProperty]
+    private string computerFilterText = "";
+
+    [ObservableProperty]
+    private bool isNotificationPanelOpen;
 
     [ObservableProperty]
     private string selectedFilter = "Усі";
@@ -145,6 +213,8 @@ public partial class MainViewModel : ViewModelBase
     [NotifyPropertyChangedFor(nameof(IsWide))]
     [NotifyPropertyChangedFor(nameof(SidebarColumnWidth))]
     [NotifyPropertyChangedFor(nameof(ContentMargin))]
+    [NotifyPropertyChangedFor(nameof(IsDashboardWide))]
+    [NotifyPropertyChangedFor(nameof(IsDashboardCompact))]
     private bool isCompact;
 
     [ObservableProperty]
@@ -218,6 +288,7 @@ public partial class MainViewModel : ViewModelBase
 
     partial void OnFilterTextChanged(string value) => ApplySessionFilter();
     partial void OnSelectedFilterChanged(string value) => ApplySessionFilter();
+    partial void OnComputerFilterTextChanged(string value) => ApplyComputerFilter();
     partial void OnSelectedComputerChanged(ComputerCard? value)
     {
         OnPropertyChanged(nameof(CanConfirmStart));
@@ -269,7 +340,9 @@ public partial class MainViewModel : ViewModelBase
         HistorySessions.ReplaceWith(_repository.GetCompletedSessions());
         RefreshAccruedAmount();
         Notifications.ReplaceWith(_repository.GetNotifications());
+        ApplyComputerFilter();
         ApplySessionFilter();
+        RefreshHourlyOccupancy();
         OnPropertyChanged(nameof(ActiveCount));
         OnPropertyChanged(nameof(FreeCount));
         OnPropertyChanged(nameof(ReservedCount));
@@ -281,6 +354,24 @@ public partial class MainViewModel : ViewModelBase
         OnPropertyChanged(nameof(HasNoHistory));
         OnPropertyChanged(nameof(UnreadNotificationCount));
         OnPropertyChanged(nameof(HasNotifications));
+        OnPropertyChanged(nameof(ActiveComputerRatio));
+        OnPropertyChanged(nameof(OccupancyPercent));
+        OnPropertyChanged(nameof(OccupancyText));
+        OnPropertyChanged(nameof(ActiveAccruedAmount));
+        OnPropertyChanged(nameof(ActiveClientCount));
+        OnPropertyChanged(nameof(TotalVisits));
+        OnPropertyChanged(nameof(TotalLoyaltyPoints));
+        OnPropertyChanged(nameof(HistoryTodayCount));
+        OnPropertyChanged(nameof(HistoryHoursToday));
+        OnPropertyChanged(nameof(NextReservation));
+        OnPropertyChanged(nameof(HasUpcomingReservation));
+        OnPropertyChanged(nameof(HasNoUpcomingReservation));
+        OnPropertyChanged(nameof(HasUrgentSessions));
+        OnPropertyChanged(nameof(SessionAttentionText));
+        OnPropertyChanged(nameof(OnlineAgentCount));
+        OnPropertyChanged(nameof(ConfiguredAgentCount));
+        OnPropertyChanged(nameof(AgentSummaryText));
+        OnPropertyChanged(nameof(AgentDetailText));
     }
 
     private void RefreshAccruedAmount()
@@ -300,6 +391,37 @@ public partial class MainViewModel : ViewModelBase
             client.FavoriteGame.Contains(query, StringComparison.OrdinalIgnoreCase)));
         OnPropertyChanged(nameof(HasNoClients));
     }
+
+    private void ApplyComputerFilter()
+    {
+        var query = ComputerFilterText.Trim();
+        VisibleComputers.ReplaceWith(Computers.Where(computer =>
+            string.IsNullOrWhiteSpace(query) ||
+            computer.ComputerLabel.Contains(query, StringComparison.OrdinalIgnoreCase) ||
+            computer.Zone.Contains(query, StringComparison.OrdinalIgnoreCase) ||
+            computer.Processor.Contains(query, StringComparison.OrdinalIgnoreCase) ||
+            computer.GraphicsCard.Contains(query, StringComparison.OrdinalIgnoreCase) ||
+            computer.Memory.Contains(query, StringComparison.OrdinalIgnoreCase) ||
+            computer.Status.Contains(query, StringComparison.OrdinalIgnoreCase)));
+    }
+
+    private void RefreshHourlyOccupancy()
+    {
+        HourlyOccupancy.Clear();
+        const int startHour = 10;
+        for (var i = 0; i < 8; i++)
+        {
+            var start = DateTime.Today.AddHours(startHour + i);
+            var end = start.AddHours(1);
+            var sessions = _sessionCache.Count(s => s.StartedAt < end && s.PlannedEnd > start);
+            var reservations = Reservations.Count(r => r.StartsAt < end && r.StartsAt.AddMinutes(r.DurationMinutes) > start);
+            var occupied = Math.Min(ComputerCount, sessions + reservations);
+            var height = ComputerCount == 0 ? 6 : Math.Max(6, Math.Round(occupied * 60d / ComputerCount));
+            HourlyOccupancy.Add(new OccupancyBarViewModel(start.ToString("HH:mm"), occupied, height));
+        }
+    }
+
+    private static string FormatHours(int minutes) => (minutes / 60d).ToString("0.#", CultureInfo.GetCultureInfo("uk-UA"));
 
     private void ApplySessionFilter()
     {
@@ -648,6 +770,8 @@ public partial class MainViewModel : ViewModelBase
     [RelayCommand] private void ShowClients() => SelectedPage = "Клієнти";
     [RelayCommand] private void ShowTariffs() => SelectedPage = "Тарифи";
     [RelayCommand] private void ShowHistory() => SelectedPage = "Історія";
+    [RelayCommand] private void ShowSettings() => SelectedPage = "Налаштування";
+    [RelayCommand] private void ToggleNotifications() => IsNotificationPanelOpen = !IsNotificationPanelOpen;
     [RelayCommand] private void RefreshData() { Refresh(); StatusMessage = "Дані оновлено."; }
 }
 

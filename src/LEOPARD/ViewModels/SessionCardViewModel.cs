@@ -25,6 +25,8 @@ public partial class SessionCardViewModel : ObservableObject
     public string TariffRateText => $"{_session.HourlyRate:0} ₴ / год";
     public string StartedAtText => _session.StartedAt.ToString("HH:mm");
     public string DurationText => FormatDuration(_now - _session.StartedAt);
+    public string AccruedText => (_session.HourlyRate * (decimal)Math.Max(0, (_now - _session.StartedAt).TotalHours))
+        .ToString("0.00", System.Globalization.CultureInfo.GetCultureInfo("uk-UA")) + " ₴";
     public string RemainingText
     {
         get
@@ -36,13 +38,19 @@ public partial class SessionCardViewModel : ObservableObject
         }
     }
 
-    public string StatusText => _session.PlannedEnd <= _now ? "Час вичерпано" : "Активний";
-    public string StatusColor => _session.PlannedEnd <= _now ? "#FFB454" : "#C7F36B";
+    public string StatusText => (_session.PlannedEnd - _now).TotalMinutes switch
+    {
+        <= 0 => "Час вичерпано",
+        <= 30 => $"{Math.Ceiling((_session.PlannedEnd - _now).TotalMinutes)} хв до кінця",
+        _ => "Активний"
+    };
+    public string StatusColor => (_session.PlannedEnd - _now).TotalMinutes <= 30 ? "#FFB454" : "#C7F36B";
 
     public void UpdateTime(DateTime now)
     {
         _now = now;
         OnPropertyChanged(nameof(DurationText));
+        OnPropertyChanged(nameof(AccruedText));
         OnPropertyChanged(nameof(RemainingText));
         OnPropertyChanged(nameof(StatusText));
         OnPropertyChanged(nameof(StatusColor));

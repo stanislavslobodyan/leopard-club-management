@@ -21,7 +21,12 @@ public sealed record ReservationCard(
     int DurationMinutes,
     string StartText,
     string DurationText,
-    string Status);
+    string Status)
+{
+    public int TimelineColumn => Math.Clamp(StartsAt.Hour - 18, 0, 5);
+    public int TimelineColumnSpan => Math.Clamp((DurationMinutes + 59) / 60, 1, 6 - TimelineColumn);
+    public string TimelineText => $"{ClientName} · {StartsAt:HH:mm}–{StartsAt.AddMinutes(DurationMinutes):HH:mm}";
+}
 
 public sealed record ComputerCard(
     int Id,
@@ -79,6 +84,7 @@ public sealed record HistorySessionCard(
     string ComputerLabel,
     string ClientName,
     string Game,
+    string TariffName,
     DateTime StartedAt,
     DateTime EndedAt,
     int DurationMinutes,
