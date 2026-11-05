@@ -51,6 +51,7 @@ classDiagram
       +AddTariff(...)
       +AddReservation(...)
       +CancelReservation(id)
+      +UpdateComputerAgentEndpoint(id, endpoint)
       +AddSessionNotification(...)
       +MarkNotificationRead(id)
     }
@@ -63,6 +64,12 @@ classDiagram
       +HourlyRate
     }
     class ComputerCard
+    class ComputerAgentClient {
+      +IsAvailableAsync(endpoint)
+    }
+    class PcAgent {
+      +GET /api/v1/health
+    }
     class ReservationCard
     class ClientCard {
       +Visits
@@ -90,6 +97,8 @@ classDiagram
     MainViewModel --> TariffCard : selections and estimate
     MainViewModel --> HistorySessionCard : report list
     MainViewModel --> ClubNotification : in-app alerts
+    MainViewModel --> ComputerAgentClient : polls configured endpoints every 20s
+    ComputerAgentClient ..> PcAgent : HTTP health request
     SessionCardViewModel --> ClubSession : formats timer fields
     ClubRepository --> SQLite : parameterized statements / transactions
     ClubRepository ..> ClubSession : reads active rows

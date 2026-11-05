@@ -50,6 +50,7 @@ public sealed class ClubRepository
         EnsureComputerSpecColumn(connection, "Storage");
         EnsureColumn(connection, "Clients", "LoyaltyPoints", "INTEGER NOT NULL DEFAULT 0");
         EnsureColumn(connection, "Sessions", "PointsAwarded", "INTEGER NOT NULL DEFAULT 0");
+        EnsureColumn(connection, "Computers", "AgentEndpoint", "TEXT NOT NULL DEFAULT ''");
         using var index = connection.CreateCommand();
         index.CommandText = "CREATE UNIQUE INDEX IF NOT EXISTS IX_Computers_Label ON Computers(Label COLLATE NOCASE); CREATE UNIQUE INDEX IF NOT EXISTS IX_Tariffs_Name ON Tariffs(Name COLLATE NOCASE); CREATE UNIQUE INDEX IF NOT EXISTS IX_Clients_Phone ON Clients(Phone); CREATE INDEX IF NOT EXISTS IX_Sessions_ActiveComputer ON Sessions(ComputerId,EndedAt); CREATE INDEX IF NOT EXISTS IX_Reservations_ComputerStart ON Reservations(ComputerId,StartsAt);";
         index.ExecuteNonQuery();
@@ -200,7 +201,7 @@ public sealed class ClubRepository
     {
         var sessions=GetActiveSessions();
         using var db=Open(); using var cmd=db.CreateCommand();
-        cmd.CommandText="SELECT Id,Label,Zone,Processor,GraphicsCard,Memory,Monitor,Storage FROM Computers ORDER BY Id;";
+        cmd.CommandText="SELECT Id,Label,Zone,Processor,GraphicsCard,Memory,Monitor,Storage,AgentEndpoint FROM Computers ORDER BY Id;";
         using var reader=cmd.ExecuteReader(); var result=new List<ComputerCard>();
         while(reader.Read())
         {
@@ -210,7 +211,7 @@ public sealed class ClubRepository
             var details = session is not null ? $"{session.ClientName} · {session.Game}"
                 : status == "Заброньований" ? "Є майбутнє бронювання" : "Готовий до сеансу";
             result.Add(new(id,label,zone,status,details,reader.GetString(3),reader.GetString(4),
-                reader.GetString(5),reader.GetString(6),reader.GetString(7)));
+                reader.GetString(5),reader.GetString(6),reader.GetString(7),reader.GetString(8),"Unknown"));
         }
         return result;
     }
@@ -238,18 +239,40 @@ public sealed class ClubRepository
         return list;
     }
 
-    public int AddComputer(string label, string zone, string processor, string graphicsCard, string memory, string monitor, string storage)
+    public int AddComputer(string label, string zone, string processor, string graphicsCard, string memory, string monitor, string storage, string agentEndpoint)
     {
         label = label.Trim(); zone = zone.Trim();
-        if (label.Length < 2 || string.IsNullOrWhiteSpace(zone)) return 0;
+        var normalizedAgentEndpoint = NormalizeAgentEndpoint(agentEndpoint);
+        if (label.Length < 2 || string.IsNullOrWhiteSpace(zone) || normalizedAgentEndpoint is null) return 0;
         using var db = Open(); using var cmd = db.CreateCommand();
-        cmd.CommandText = "INSERT INTO Computers(Label,Zone,Processor,GraphicsCard,Memory,Monitor,Storage) VALUES($label,$zone,$cpu,$gpu,$ram,$monitor,$storage); SELECT last_insert_rowid();";
+        cmd.CommandText = "INSERT INTO Computers(Label,Zone,Processor,GraphicsCard,Memory,Monitor,Storage,AgentEndpoint) VALUES($label,$zone,$cpu,$gpu,$ram,$monitor,$storage,$agent); SELECT last_insert_rowid();";
         cmd.Parameters.AddWithValue("$label", label); cmd.Parameters.AddWithValue("$zone", zone);
         cmd.Parameters.AddWithValue("$cpu", processor.Trim()); cmd.Parameters.AddWithValue("$gpu", graphicsCard.Trim());
         cmd.Parameters.AddWithValue("$ram", memory.Trim()); cmd.Parameters.AddWithValue("$monitor", monitor.Trim());
-        cmd.Parameters.AddWithValue("$storage", storage.Trim());
+        cmd.Parameters.AddWithValue("$storage", storage.Trim()); cmd.Parameters.AddWithValue("$agent", normalizedAgentEndpoint);
         try { return Convert.ToInt32(cmd.ExecuteScalar()); }
         catch (SqliteException ex) when (ex.SqliteErrorCode == 19) { return 0; }
+    }
+
+    public bool UpdateComputerAgentEndpoint(int computerId, string agentEndpoint)
+    {
+        var normalizedAgentEndpoint = NormalizeAgentEndpoint(agentEndpoint);
+        if (normalizedAgentEndpoint is null) return false;
+        using var db=Open(); using var cmd=db.CreateCommand();
+        cmd.CommandText="UPDATE Computers SET AgentEndpoint=$endpoint WHERE Id=$id;";
+        cmd.Parameters.AddWithValue("$endpoint",normalizedAgentEndpoint); cmd.Parameters.AddWithValue("$id",computerId);
+        return cmd.ExecuteNonQuery()==1;
+    }
+
+    private static string? NormalizeAgentEndpoint(string endpoint)
+    {
+        endpoint = endpoint.Trim().TrimEnd('/');
+        if (endpoint.Length == 0) return "";
+        if (!Uri.TryCreate(endpoint, UriKind.Absolute, out var uri) ||
+            uri.Scheme is not ("http" or "https") || string.IsNullOrWhiteSpace(uri.Host) ||
+            !string.IsNullOrEmpty(uri.UserInfo) || !string.IsNullOrEmpty(uri.Query) || !string.IsNullOrEmpty(uri.Fragment) ||
+            uri.AbsolutePath is not ("" or "/")) return null;
+        return uri.GetLeftPart(UriPartial.Authority);
     }
 
     public int AddTariff(string name, string description, decimal hourlyRate, string badge)

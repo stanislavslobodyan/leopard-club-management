@@ -13,10 +13,13 @@ namespace LEOPARD.ViewModels;
 public partial class MainViewModel : ViewModelBase
 {
     private readonly ClubRepository _repository = new();
+    private readonly ComputerAgentClient _agentClient = new();
     private readonly DispatcherTimer _clock;
     private IReadOnlyList<ClubSession> _sessionCache = [];
     private bool _returnToStartAfterClient;
     private readonly HashSet<(int SessionId, string Kind)> _checkedAlerts = [];
+    private DateTime _lastAgentPoll = DateTime.MinValue;
+    private bool _agentPollRunning;
 
     public MainViewModel()
     {
@@ -29,6 +32,11 @@ public partial class MainViewModel : ViewModelBase
             foreach (var session in ActiveSessions)
                 session.UpdateTime(now);
             CheckSessionAlerts(now);
+            if (now - _lastAgentPoll >= TimeSpan.FromSeconds(20))
+            {
+                _lastAgentPoll = now;
+                _ = RefreshAgentStatusesAsync();
+            }
             if (SelectedFilter is "Менше 15 хв" or "Потрібна увага")
                 ApplySessionFilter();
             OnPropertyChanged(nameof(CurrentTimeText));
@@ -182,7 +190,12 @@ public partial class MainViewModel : ViewModelBase
     [ObservableProperty] private string newComputerMemory = "";
     [ObservableProperty] private string newComputerMonitor = "";
     [ObservableProperty] private string newComputerStorage = "";
+    [ObservableProperty] private string newComputerAgentEndpoint = "";
     [ObservableProperty] private string computerFormError = "";
+
+    [ObservableProperty] private bool isAgentDialogOpen;
+    [ObservableProperty] private ComputerCard? selectedAgentComputer;
+    [ObservableProperty] private string editAgentEndpoint = "";
 
     [ObservableProperty] private bool isTariffDialogOpen;
     [ObservableProperty] private string newTariffName = "";
@@ -352,6 +365,31 @@ public partial class MainViewModel : ViewModelBase
         OnPropertyChanged(nameof(HasNotifications));
     }
 
+    private async Task RefreshAgentStatusesAsync()
+    {
+        if (_agentPollRunning) return;
+        var configured = Computers.Where(c => !string.IsNullOrWhiteSpace(c.AgentEndpoint)).ToArray();
+        if (configured.Length == 0) return;
+        _agentPollRunning = true;
+        try
+        {
+            var results = await Task.WhenAll(configured.Select(async computer =>
+                (computer.Id, Status: await _agentClient.IsAvailableAsync(computer.AgentEndpoint))));
+            foreach (var result in results)
+            {
+                var index = -1;
+                for (var i = 0; i < Computers.Count; i++)
+                    if (Computers[i].Id == result.Id) { index = i; break; }
+                if (index < 0) continue;
+                var updated = Computers[index] with { AgentStatus = result.Status ? "Online" : "Offline" };
+                Computers[index] = updated;
+                for (var i = 0; i < AvailableComputers.Count; i++)
+                    if (AvailableComputers[i].Id == result.Id) { AvailableComputers[i] = updated; break; }
+            }
+        }
+        finally { _agentPollRunning = false; }
+    }
+
     [RelayCommand]
     private void AcknowledgeNotification(int id)
     {
@@ -364,6 +402,7 @@ public partial class MainViewModel : ViewModelBase
     {
         NewComputerLabel = ""; NewComputerProcessor = ""; NewComputerGraphicsCard = "";
         NewComputerMemory = ""; NewComputerMonitor = ""; NewComputerStorage = ""; ComputerFormError = "";
+        NewComputerAgentEndpoint = "";
         IsComputerDialogOpen = true;
     }
 
@@ -376,14 +415,40 @@ public partial class MainViewModel : ViewModelBase
             return;
         }
         var id = _repository.AddComputer(NewComputerLabel, NewComputerZone, NewComputerProcessor,
-            NewComputerGraphicsCard, NewComputerMemory, NewComputerMonitor, NewComputerStorage);
-        if (id == 0) { ComputerFormError = "Комп’ютер із такою назвою вже є або дані некоректні."; return; }
+            NewComputerGraphicsCard, NewComputerMemory, NewComputerMonitor, NewComputerStorage, NewComputerAgentEndpoint);
+        if (id == 0) { ComputerFormError = "Перевірте назву ПК та адресу агента (http://хост:47831); назва має бути унікальною."; return; }
         IsComputerDialogOpen = false;
         Refresh();
         StatusMessage = $"Робоче місце {NewComputerLabel.Trim()} додано до обліку.";
     }
 
     [RelayCommand] private void CancelNewComputerDialog() => IsComputerDialogOpen = false;
+
+    [RelayCommand]
+    private void ConfigureComputerAgent(int computerId)
+    {
+        SelectedAgentComputer = Computers.FirstOrDefault(c => c.Id == computerId);
+        if (SelectedAgentComputer is null) return;
+        EditAgentEndpoint = SelectedAgentComputer.AgentEndpoint;
+        ComputerFormError = "";
+        IsAgentDialogOpen = true;
+    }
+
+    [RelayCommand]
+    private void SaveComputerAgentEndpoint()
+    {
+        if (SelectedAgentComputer is null || !_repository.UpdateComputerAgentEndpoint(SelectedAgentComputer.Id, EditAgentEndpoint))
+        {
+            ComputerFormError = "Введіть базову адресу http://хост:47831 або https://хост; поле можна залишити порожнім.";
+            return;
+        }
+        IsAgentDialogOpen = false;
+        Refresh();
+        _lastAgentPoll = DateTime.MinValue;
+        StatusMessage = $"Налаштування агента для {SelectedAgentComputer.ComputerLabel} оновлено.";
+    }
+
+    [RelayCommand] private void CancelAgentDialog() => IsAgentDialogOpen = false;
 
     [RelayCommand]
     private void ShowNewTariffDialog()

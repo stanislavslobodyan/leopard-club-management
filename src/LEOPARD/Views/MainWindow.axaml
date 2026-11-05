@@ -369,6 +369,14 @@
                                             <TextBlock Text="{Binding Status}" FontSize="11" Foreground="{Binding StatusColor}" />
                                         </Border>
                                         <TextBlock Text="{Binding Details}" FontSize="11" Classes="muted" TextWrapping="Wrap" />
+                                        <StackPanel Orientation="Horizontal" Spacing="6">
+                                            <Ellipse Width="7" Height="7" Fill="{Binding AgentConnectionColor}" VerticalAlignment="Center" />
+                                            <TextBlock Text="{Binding AgentConnectionText}" FontSize="10" Foreground="{Binding AgentConnectionColor}" />
+                                        </StackPanel>
+                                        <Button Classes="secondary" Padding="8,5" HorizontalAlignment="Left"
+                                                Content="Налаштувати агент" FontSize="10"
+                                                Command="{Binding $parent[Window].DataContext.ConfigureComputerAgentCommand}"
+                                                CommandParameter="{Binding Id}" />
                                         <Border Height="1" Background="#29313C" />
                                         <StackPanel Spacing="5">
                                             <TextBlock Text="ХАРАКТЕРИСТИКИ" FontSize="9" Foreground="#7E8997" FontWeight="Bold" />
@@ -683,6 +691,12 @@
                             <StackPanel Grid.Column="1" Spacing="5"><TextBlock Text="НАКОПИЧУВАЧ" FontSize="10" Classes="muted" /><TextBox PlaceholderText="1 TB NVMe" Text="{Binding NewComputerStorage}" /></StackPanel>
                         </Grid>
                         <StackPanel Spacing="5"><TextBlock Text="МОНІТОР" FontSize="10" Classes="muted" /><TextBox PlaceholderText="27″ QHD · 240 Hz" Text="{Binding NewComputerMonitor}" /></StackPanel>
+                        <StackPanel Spacing="5">
+                            <TextBlock Text="АДРЕСА PC-АГЕНТА (НЕОБОВ’ЯЗКОВО)" FontSize="10" Classes="muted" />
+                            <TextBox PlaceholderText="http://192.168.1.50:47831" Text="{Binding NewComputerAgentEndpoint}" />
+                            <TextBlock Text="Агент потрібно запустити на цьому ПК і дозволити з’єднання з робочої станції адміністратора."
+                                       FontSize="10" Classes="muted" TextWrapping="Wrap" />
+                        </StackPanel>
                         <TextBlock Text="{Binding ComputerFormError}" Foreground="#FF8D8D" FontSize="11" TextWrapping="Wrap" />
                         <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8">
                             <Button Classes="secondary" Command="{Binding CancelNewComputerDialogCommand}" Content="Скасувати" />
@@ -760,6 +774,33 @@
                     <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8">
                         <Button Classes="secondary" Command="{Binding CancelNewReservationDialogCommand}" Content="Скасувати" />
                         <Button Classes="primary" Command="{Binding SaveNewReservationCommand}" Content="Створити бронювання" />
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+        </Border>
+
+        <Border Grid.Column="0" Grid.ColumnSpan="2" Grid.Row="0" Grid.RowSpan="2"
+                IsVisible="{Binding IsAgentDialogOpen}" Background="#C9000000">
+            <Border Classes="panel" MaxWidth="500" HorizontalAlignment="Center" VerticalAlignment="Center"
+                    Margin="14" Padding="22">
+                <StackPanel Spacing="14">
+                    <Grid ColumnDefinitions="*,Auto">
+                        <StackPanel Spacing="4">
+                            <TextBlock Text="PC-агент" Classes="section-title" FontSize="22" />
+                            <TextBlock Text="{Binding SelectedAgentComputer.ComputerLabel}" Classes="muted" FontSize="12" />
+                        </StackPanel>
+                        <Button Grid.Column="1" Classes="secondary" Command="{Binding CancelAgentDialogCommand}" Content="✕" />
+                    </Grid>
+                    <StackPanel Spacing="6">
+                        <TextBlock Text="БАЗОВА HTTP(S)-АДРЕСА" FontSize="10" Classes="muted" />
+                        <TextBox PlaceholderText="http://192.168.1.50:47831" Text="{Binding EditAgentEndpoint}" />
+                        <TextBlock Text="Залиште порожнім, щоб вимкнути перевірку. Агент віддає тільки стан вузла; керування екраном або іграми не виконується."
+                                   FontSize="10" Classes="muted" TextWrapping="Wrap" />
+                    </StackPanel>
+                    <TextBlock Text="{Binding ComputerFormError}" Foreground="#FF8D8D" FontSize="11" TextWrapping="Wrap" />
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8">
+                        <Button Classes="secondary" Command="{Binding CancelAgentDialogCommand}" Content="Скасувати" />
+                        <Button Classes="primary" Command="{Binding SaveComputerAgentEndpointCommand}" Content="Зберегти адресу" />
                     </StackPanel>
                 </StackPanel>
             </Border>

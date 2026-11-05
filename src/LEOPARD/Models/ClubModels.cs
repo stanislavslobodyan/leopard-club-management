@@ -31,7 +31,9 @@ public sealed record ComputerCard(
     string GraphicsCard,
     string Memory,
     string Monitor,
-    string Storage)
+    string Storage,
+    string AgentEndpoint,
+    string AgentStatus)
 {
     public string StatusColor => Status switch
     {
@@ -41,6 +43,20 @@ public sealed record ComputerCard(
     };
 
     public string ChoiceText => $"{ComputerLabel} · {Zone} · {Processor}";
+    public string AgentConnectionText => string.IsNullOrWhiteSpace(AgentEndpoint)
+        ? "Агент не налаштовано"
+        : AgentStatus switch
+        {
+            "Online" => "Агент на зв’язку",
+            "Offline" => "Агент недоступний",
+            _ => "Очікує перевірки"
+        };
+    public string AgentConnectionColor => AgentStatus switch
+    {
+        "Online" => "#9FE2B2",
+        "Offline" => "#FFB454",
+        _ => "#929BA8"
+    };
 }
 
 public sealed record ClientCard(
