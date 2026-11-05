@@ -1,6 +1,6 @@
 # LEOPARD
 
-LEOPARD — програма керування комп’ютерним клубом для Windows, побудована на C#, .NET 10, Avalonia UI та MVVM.
+LEOPARD — програма керування комп’ютерним клубом, побудована на C#, .NET 10, Avalonia UI та MVVM.
 
 **Уся документація зібрана в одному файлі:** [Відкрити повну документацію LEOPARD](docs/LEOPARD-DOCUMENTATION.md).
 
