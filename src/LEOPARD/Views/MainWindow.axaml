@@ -1,0 +1,768 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:LEOPARD.ViewModels"
+        xmlns:models="using:LEOPARD.Models"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        mc:Ignorable="d" d:DesignWidth="1360" d:DesignHeight="900"
+        x:Class="LEOPARD.Views.MainWindow"
+        x:DataType="vm:MainViewModel"
+        Title="LEOPARD — Адміністрування клубу"
+        Width="1360" Height="900" MinWidth="360" MinHeight="620"
+        WindowStartupLocation="CenterScreen"
+        Background="#0B0E13" Foreground="#F2F4F7">
+
+    <Grid RowDefinitions="*,Auto">
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="{Binding SidebarColumnWidth}" />
+            <ColumnDefinition Width="*" />
+        </Grid.ColumnDefinitions>
+
+        <Border Grid.Column="0" Grid.RowSpan="2" IsVisible="{Binding IsWide}"
+                Background="#10141B" BorderBrush="#242B36" BorderThickness="0,0,1,0">
+            <Grid RowDefinitions="Auto,*,Auto">
+                <StackPanel Grid.Row="0" Margin="22,24,20,26" Orientation="Horizontal" Spacing="12">
+                    <Border Width="38" Height="38" CornerRadius="11" Background="#C7F36B">
+                        <TextBlock Text="L" Foreground="#12160C" FontSize="22" FontWeight="Black"
+                                   HorizontalAlignment="Center" VerticalAlignment="Center" />
+                    </Border>
+                    <StackPanel VerticalAlignment="Center" Spacing="1">
+                        <TextBlock Text="LEOPARD" FontSize="16" FontWeight="Black" LetterSpacing="1.2" />
+                        <TextBlock Text="CLUB CONTROL" FontSize="9" Foreground="#818C9A" LetterSpacing="1.1" />
+                    </StackPanel>
+                </StackPanel>
+
+                <StackPanel Grid.Row="1" Margin="14,0" Spacing="6">
+                    <TextBlock Text="РОБОЧИЙ ПРОСТІР" FontSize="10" Foreground="#687381"
+                               Margin="10,6,0,8" LetterSpacing="1" />
+                    <Button Classes="nav" Classes.active="{Binding IsDashboard}" Command="{Binding ShowDashboardCommand}" Content="⌂   Огляд клубу" />
+                    <Button Classes="nav" Classes.active="{Binding IsSessions}" Command="{Binding ShowSessionsCommand}" Content="◉   Активні сеанси" />
+                    <Button Classes="nav" Classes.active="{Binding IsBookings}" Command="{Binding ShowBookingsCommand}" Content="▣   Бронювання" />
+                    <Button Classes="nav" Classes.active="{Binding IsComputers}" Command="{Binding ShowComputersCommand}" Content="▦   Комп’ютери" />
+                    <Button Classes="nav" Classes.active="{Binding IsClients}" Command="{Binding ShowClientsCommand}" Content="♙   Клієнти" />
+                    <Button Classes="nav" Classes.active="{Binding IsTariffs}" Command="{Binding ShowTariffsCommand}" Content="◇   Тарифи" />
+                    <Button Classes="nav" Classes.active="{Binding IsHistory}" Command="{Binding ShowHistoryCommand}" Content="◷   Історія сеансів" />
+                </StackPanel>
+
+                <Border Grid.Row="2" Margin="16" Padding="13" Classes="panel">
+                    <StackPanel Spacing="5">
+                        <TextBlock Text="ОБЛІК КЛУБУ" FontSize="10" Foreground="#C7F36B" FontWeight="Bold" />
+                        <TextBlock Text="Локальна база SQLite" FontSize="12" />
+                        <TextBlock Text="Заповніть фактичні дані ПК, клієнтів і тарифів."
+                                   FontSize="10" Foreground="#929BA8" TextWrapping="Wrap" />
+                    </StackPanel>
+                </Border>
+            </Grid>
+        </Border>
+
+        <ScrollViewer Grid.Column="1" Grid.Row="0" HorizontalScrollBarVisibility="Disabled">
+            <StackPanel Margin="{Binding ContentMargin}" Spacing="22">
+                <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto">
+                    <StackPanel Grid.Column="0" Spacing="4">
+                        <TextBlock Text="{Binding PageTitle}" Classes="page-title" />
+                        <TextBlock Text="{Binding CurrentDateText}" Classes="muted" FontSize="13" />
+                    </StackPanel>
+                    <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
+                        <Border Classes="panel" Padding="11,8" CornerRadius="8" IsVisible="{Binding IsWide}">
+                            <StackPanel Orientation="Horizontal" Spacing="7">
+                                <Ellipse Width="7" Height="7" Fill="#C7F36B" VerticalAlignment="Center" />
+                                <TextBlock Text="Локальні дані" FontSize="12" VerticalAlignment="Center" />
+                            </StackPanel>
+                        </Border>
+                        <Button Classes="primary" Command="{Binding StartSessionCommand}" Content="＋  Почати сеанс" />
+                    </StackPanel>
+                    <Border Grid.Row="1" Grid.ColumnSpan="2" Margin="0,14,0,0"
+                            Background="#C7F36B" Height="2" HorizontalAlignment="Stretch" Opacity="0.75" />
+                </Grid>
+
+                <StackPanel IsVisible="{Binding IsDashboard}" Spacing="20">
+                    <WrapPanel Orientation="Horizontal">
+                        <Border Classes="metric" Width="154" Height="112" Padding="14" Margin="0,0,8,8">
+                            <StackPanel Spacing="5">
+                                <TextBlock Text="АКТИВНІ СЕАНСИ" FontSize="10" Foreground="#98A2AF" />
+                                <TextBlock Text="{Binding ActiveCount}" FontSize="30" FontWeight="Bold" Foreground="#C7F36B" />
+                                <TextBlock Text="зараз у клубі" FontSize="11" Classes="muted" />
+                            </StackPanel>
+                        </Border>
+                        <Border Classes="metric" Width="154" Height="112" Padding="14" Margin="0,0,8,8">
+                            <StackPanel Spacing="5">
+                                <TextBlock Text="ВІЛЬНІ ПК" FontSize="10" Foreground="#98A2AF" />
+                                <TextBlock Text="{Binding FreeCount}" FontSize="30" FontWeight="Bold" />
+                                <TextBlock Text="готові до старту" FontSize="11" Classes="muted" />
+                            </StackPanel>
+                        </Border>
+                        <Border Classes="metric" Width="154" Height="112" Padding="14" Margin="0,0,8,8">
+                            <StackPanel Spacing="5">
+                                <TextBlock Text="ЗАБРОНЬОВАНІ" FontSize="10" Foreground="#98A2AF" />
+                                <TextBlock Text="{Binding ReservedCount}" FontSize="30" FontWeight="Bold" Foreground="#72B8FF" />
+                                <TextBlock Text="мають наступний слот" FontSize="11" Classes="muted" />
+                            </StackPanel>
+                        </Border>
+                        <Border Classes="metric" Width="154" Height="112" Padding="14" Margin="0,0,8,8">
+                            <StackPanel Spacing="5">
+                                <TextBlock Text="КОМП’ЮТЕРИ" FontSize="10" Foreground="#98A2AF" />
+                                <TextBlock Text="{Binding ComputerCount}" FontSize="30" FontWeight="Bold" />
+                                <TextBlock Text="у клубі" FontSize="11" Classes="muted" />
+                            </StackPanel>
+                        </Border>
+                        <Border Classes="metric" Width="176" Height="112" Padding="14" Margin="0,0,8,8">
+                            <StackPanel Spacing="5">
+                                <TextBlock Text="ОЦІНКА СЬОГОДНІ" FontSize="10" Foreground="#98A2AF" />
+                                <TextBlock Text="{Binding TodayEstimatedRevenue}" FontSize="24" FontWeight="Bold" Foreground="#C7F36B" />
+                                <TextBlock Text="за завершеними сеансами" FontSize="10" Classes="muted" />
+                            </StackPanel>
+                        </Border>
+                    </WrapPanel>
+
+                    <Border Classes="panel" Padding="16" IsVisible="{Binding HasNotifications}">
+                        <StackPanel Spacing="12">
+                            <Grid ColumnDefinitions="*,Auto">
+                                <StackPanel Spacing="3">
+                                    <TextBlock Text="Сповіщення зміни" Classes="section-title" FontSize="18" />
+                                    <StackPanel Orientation="Horizontal" Spacing="3">
+                                        <TextBlock Text="Нагадування про завершення сеансів · непрочитаних:" Classes="muted" FontSize="11" />
+                                        <TextBlock Text="{Binding UnreadNotificationCount}" Classes="muted" FontSize="11" />
+                                    </StackPanel>
+                                </StackPanel>
+                                <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
+                                    <TextBlock Text="●" Foreground="#FFB454" FontWeight="Bold" />
+                                    <TextBlock Text="{Binding UnreadNotificationCount}" Foreground="#FFB454" FontWeight="Bold" />
+                                </StackPanel>
+                            </Grid>
+                            <ItemsControl ItemsSource="{Binding Notifications}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate x:DataType="models:ClubNotification">
+                                        <Border Background="#111821" CornerRadius="9" Padding="10" Margin="0,0,0,6">
+                                            <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto">
+                                                <TextBlock Text="{Binding Title}" FontWeight="SemiBold" FontSize="12" />
+                                                <TextBlock Grid.Column="1" Text="{Binding CreatedText}" Classes="muted" FontSize="10" />
+                                                <TextBlock Grid.Row="1" Text="{Binding Message}" Classes="muted" FontSize="11" TextWrapping="Wrap" Margin="0,4,10,0" />
+                                                <Button Grid.Row="1" Grid.Column="1" Classes="secondary" Padding="7,4"
+                                                        Content="Переглянуто" IsEnabled="{Binding CanMarkRead}"
+                                                        Command="{Binding $parent[Window].DataContext.AcknowledgeNotificationCommand}"
+                                                        CommandParameter="{Binding Id}" />
+                                            </Grid>
+                                        </Border>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </StackPanel>
+                    </Border>
+
+                    <Grid ColumnDefinitions="*,Auto">
+                        <StackPanel Spacing="4">
+                            <TextBlock Text="Активні сеанси" Classes="section-title" />
+                            <TextBlock Text="Стежте за часом, клієнтами та станом комп’ютерів."
+                                       Classes="muted" FontSize="12" />
+                        </StackPanel>
+                        <Button Grid.Column="1" Classes="secondary" Command="{Binding ShowSessionsCommand}"
+                                Content="Усі сеанси  →" VerticalAlignment="Center" />
+                    </Grid>
+                    <Grid ColumnDefinitions="*,210,Auto" ColumnSpacing="10" IsVisible="{Binding IsWide}">
+                        <TextBox Grid.Column="0" PlaceholderText="Пошук: клієнт, гра або ПК"
+                                 Text="{Binding FilterText, UpdateSourceTrigger=PropertyChanged}" />
+                        <ComboBox Grid.Column="1" ItemsSource="{Binding FilterOptions}" SelectedItem="{Binding SelectedFilter}" />
+                        <Button Grid.Column="2" Classes="secondary" Command="{Binding RefreshDataCommand}" Content="↻" />
+                    </Grid>
+                    <StackPanel IsVisible="{Binding IsCompact}" Spacing="8">
+                        <TextBox PlaceholderText="Пошук: клієнт, гра або ПК"
+                                 Text="{Binding FilterText, UpdateSourceTrigger=PropertyChanged}" />
+                        <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                            <ComboBox ItemsSource="{Binding FilterOptions}" SelectedItem="{Binding SelectedFilter}" />
+                            <Button Grid.Column="1" Classes="secondary" Command="{Binding RefreshDataCommand}" Content="↻" />
+                        </Grid>
+                    </StackPanel>
+                    <ItemsControl ItemsSource="{Binding ActiveSessions}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="vm:SessionCardViewModel">
+                                <Border Classes="panel" Padding="16" Margin="0,0,0,10">
+                                    <Grid RowDefinitions="Auto,Auto,Auto" RowSpacing="12">
+                                        <Grid Grid.Row="0" ColumnDefinitions="*,Auto">
+                                            <StackPanel Orientation="Horizontal" Spacing="10">
+                                                <Border Width="45" Height="38" Background="#242D39" CornerRadius="8">
+                                                    <TextBlock Text="{Binding ComputerLabel}" FontSize="11" FontWeight="Bold"
+                                                               HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                                </Border>
+                                                <StackPanel VerticalAlignment="Center" Spacing="2">
+                                                    <TextBlock Text="{Binding ClientName}" FontWeight="SemiBold" />
+                                                    <TextBlock Text="{Binding Game}" FontSize="11" Classes="muted" />
+                                                </StackPanel>
+                                            </StackPanel>
+                                            <Border Grid.Column="1" Background="#26341A" CornerRadius="12" Padding="9,5"
+                                                    VerticalAlignment="Center">
+                                                <TextBlock Text="{Binding StatusText}" Foreground="{Binding StatusColor}" FontSize="10" FontWeight="Bold" />
+                                            </Border>
+                                        </Grid>
+                                        <Grid Grid.Row="1" ColumnDefinitions="*,*,*,*" Margin="0,2" IsVisible="{Binding $parent[Window].DataContext.IsWide}">
+                                            <StackPanel Spacing="3">
+                                                <TextBlock Text="ТАРИФ" FontSize="9" Classes="muted" />
+                                                <TextBlock Text="{Binding TariffName}" FontSize="12" />
+                                                <TextBlock Text="{Binding TariffRateText}" FontSize="10" Classes="muted" />
+                                            </StackPanel>
+                                            <StackPanel Grid.Column="1" Spacing="3">
+                                                <TextBlock Text="ПОЧАТОК" FontSize="9" Classes="muted" />
+                                                <TextBlock Text="{Binding StartedAtText}" FontSize="12" />
+                                            </StackPanel>
+                                            <StackPanel Grid.Column="2" Spacing="3">
+                                                <TextBlock Text="ТРИВАЛІСТЬ" FontSize="9" Classes="muted" />
+                                                <TextBlock Text="{Binding DurationText}" FontSize="12" />
+                                            </StackPanel>
+                                            <StackPanel Grid.Column="3" Spacing="3">
+                                                <TextBlock Text="ЧАС" FontSize="9" Classes="muted" />
+                                                <TextBlock Text="{Binding RemainingText}" FontSize="12" Foreground="{Binding StatusColor}" />
+                                            </StackPanel>
+                                        </Grid>
+                                        <Grid Grid.Row="1" ColumnDefinitions="*,*" RowDefinitions="Auto,Auto" RowSpacing="8"
+                                              IsVisible="{Binding $parent[Window].DataContext.IsCompact}">
+                                            <StackPanel Spacing="3"><TextBlock Text="ТАРИФ" FontSize="9" Classes="muted" /><TextBlock Text="{Binding TariffName}" FontSize="12" /><TextBlock Text="{Binding TariffRateText}" FontSize="10" Classes="muted" /></StackPanel>
+                                            <StackPanel Grid.Column="1" Spacing="3"><TextBlock Text="ПОЧАТОК" FontSize="9" Classes="muted" /><TextBlock Text="{Binding StartedAtText}" FontSize="12" /></StackPanel>
+                                            <StackPanel Grid.Row="1" Spacing="3"><TextBlock Text="ТРИВАЛІСТЬ" FontSize="9" Classes="muted" /><TextBlock Text="{Binding DurationText}" FontSize="12" /></StackPanel>
+                                            <StackPanel Grid.Row="1" Grid.Column="1" Spacing="3"><TextBlock Text="ЧАС" FontSize="9" Classes="muted" /><TextBlock Text="{Binding RemainingText}" FontSize="12" Foreground="{Binding StatusColor}" /></StackPanel>
+                                        </Grid>
+                                        <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8">
+                                            <Button Classes="secondary" Command="{Binding ExtendCommand}" Content="+30 хв" />
+                                            <Button Classes="primary" Command="{Binding EndCommand}" Content="Завершити" />
+                                        </StackPanel>
+                                    </Grid>
+                                </Border>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                    <Border Classes="panel" Padding="16" IsVisible="{Binding HasNoSessions}">
+                        <TextBlock Text="За цими умовами активних сеансів не знайдено."
+                                   Classes="muted" TextWrapping="Wrap" />
+                    </Border>
+                    <Border Classes="panel" Padding="12">
+                        <TextBlock Text="{Binding StatusMessage}" FontSize="12" Classes="muted" TextWrapping="Wrap" />
+                    </Border>
+                </StackPanel>
+
+                <StackPanel IsVisible="{Binding IsSessions}" Spacing="16">
+                    <Grid ColumnDefinitions="*,210,Auto" ColumnSpacing="10" IsVisible="{Binding IsWide}">
+                        <TextBox Grid.Column="0" PlaceholderText="Пошук за клієнтом, грою або ПК"
+                                 Text="{Binding FilterText, UpdateSourceTrigger=PropertyChanged}" />
+                        <ComboBox Grid.Column="1" ItemsSource="{Binding FilterOptions}" SelectedItem="{Binding SelectedFilter}" />
+                        <Button Grid.Column="2" Classes="secondary" Command="{Binding RefreshDataCommand}" Content="↻" />
+                    </Grid>
+                    <StackPanel IsVisible="{Binding IsCompact}" Spacing="8">
+                        <TextBox PlaceholderText="Пошук за клієнтом, грою або ПК"
+                                 Text="{Binding FilterText, UpdateSourceTrigger=PropertyChanged}" />
+                        <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                            <ComboBox ItemsSource="{Binding FilterOptions}" SelectedItem="{Binding SelectedFilter}" />
+                            <Button Grid.Column="1" Classes="secondary" Command="{Binding RefreshDataCommand}" Content="↻" />
+                        </Grid>
+                    </StackPanel>
+                    <ItemsControl ItemsSource="{Binding ActiveSessions}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="vm:SessionCardViewModel">
+                                <Border Classes="panel" Padding="16" Margin="0,0,0,10">
+                                    <Grid RowDefinitions="Auto,Auto,Auto" RowSpacing="12">
+                                        <Grid Grid.Row="0" ColumnDefinitions="*,Auto">
+                                            <StackPanel Orientation="Horizontal" Spacing="10">
+                                                <Border Width="45" Height="38" Background="#242D39" CornerRadius="8">
+                                                    <TextBlock Text="{Binding ComputerLabel}" FontSize="11" FontWeight="Bold"
+                                                               HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                                </Border>
+                                                <StackPanel VerticalAlignment="Center" Spacing="2">
+                                                    <TextBlock Text="{Binding ClientName}" FontWeight="SemiBold" />
+                                                    <TextBlock Text="{Binding Game}" FontSize="11" Classes="muted" />
+                                                </StackPanel>
+                                            </StackPanel>
+                                            <Border Grid.Column="1" Background="#26341A" CornerRadius="12" Padding="9,5"
+                                                    VerticalAlignment="Center">
+                                                <TextBlock Text="{Binding StatusText}" Foreground="{Binding StatusColor}" FontSize="10" FontWeight="Bold" />
+                                            </Border>
+                                        </Grid>
+                                        <Grid Grid.Row="1" ColumnDefinitions="*,*,*,*" Margin="0,2" IsVisible="{Binding $parent[Window].DataContext.IsWide}">
+                                            <StackPanel Spacing="3"><TextBlock Text="ТАРИФ" FontSize="9" Classes="muted" /><TextBlock Text="{Binding TariffName}" FontSize="12" /><TextBlock Text="{Binding TariffRateText}" FontSize="10" Classes="muted" /></StackPanel>
+                                            <StackPanel Grid.Column="1" Spacing="3"><TextBlock Text="ПОЧАТОК" FontSize="9" Classes="muted" /><TextBlock Text="{Binding StartedAtText}" FontSize="12" /></StackPanel>
+                                            <StackPanel Grid.Column="2" Spacing="3"><TextBlock Text="ТРИВАЛІСТЬ" FontSize="9" Classes="muted" /><TextBlock Text="{Binding DurationText}" FontSize="12" /></StackPanel>
+                                            <StackPanel Grid.Column="3" Spacing="3"><TextBlock Text="ЧАС" FontSize="9" Classes="muted" /><TextBlock Text="{Binding RemainingText}" FontSize="12" Foreground="{Binding StatusColor}" /></StackPanel>
+                                        </Grid>
+                                        <Grid Grid.Row="1" ColumnDefinitions="*,*" RowDefinitions="Auto,Auto" RowSpacing="8"
+                                              IsVisible="{Binding $parent[Window].DataContext.IsCompact}">
+                                            <StackPanel Spacing="3"><TextBlock Text="ТАРИФ" FontSize="9" Classes="muted" /><TextBlock Text="{Binding TariffName}" FontSize="12" /><TextBlock Text="{Binding TariffRateText}" FontSize="10" Classes="muted" /></StackPanel>
+                                            <StackPanel Grid.Column="1" Spacing="3"><TextBlock Text="ПОЧАТОК" FontSize="9" Classes="muted" /><TextBlock Text="{Binding StartedAtText}" FontSize="12" /></StackPanel>
+                                            <StackPanel Grid.Row="1" Spacing="3"><TextBlock Text="ТРИВАЛІСТЬ" FontSize="9" Classes="muted" /><TextBlock Text="{Binding DurationText}" FontSize="12" /></StackPanel>
+                                            <StackPanel Grid.Row="1" Grid.Column="1" Spacing="3"><TextBlock Text="ЧАС" FontSize="9" Classes="muted" /><TextBlock Text="{Binding RemainingText}" FontSize="12" Foreground="{Binding StatusColor}" /></StackPanel>
+                                        </Grid>
+                                        <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8">
+                                            <Button Classes="secondary" Command="{Binding ExtendCommand}" Content="+30 хв" />
+                                            <Button Classes="primary" Command="{Binding EndCommand}" Content="Завершити" />
+                                        </StackPanel>
+                                    </Grid>
+                                </Border>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                    <Border Classes="panel" Padding="16" IsVisible="{Binding HasNoSessions}">
+                        <TextBlock Text="За цими умовами активних сеансів не знайдено."
+                                   Classes="muted" TextWrapping="Wrap" />
+                    </Border>
+                    <Border Classes="panel" Padding="12"><TextBlock Text="{Binding StatusMessage}" FontSize="12" Classes="muted" /></Border>
+                </StackPanel>
+
+                <StackPanel IsVisible="{Binding IsBookings}" Spacing="16">
+                    <Grid ColumnDefinitions="*,Auto">
+                        <TextBlock Text="Майбутні слоти клубу. Перед записом LEOPARD перевіряє перетин з іншими бронюваннями та сеансами."
+                                   Classes="muted" TextWrapping="Wrap" VerticalAlignment="Center" />
+                        <Button Grid.Column="1" Classes="primary" Command="{Binding ShowNewReservationDialogCommand}"
+                                Content="＋  Створити бронювання" Margin="10,0,0,0" />
+                    </Grid>
+                    <Border Classes="panel" Padding="16" IsVisible="{Binding HasNoReservations}">
+                        <TextBlock Text="Бронювань поки немає. Створіть перший слот для клієнта."
+                                   Classes="muted" TextWrapping="Wrap" />
+                    </Border>
+                    <ItemsControl ItemsSource="{Binding Reservations}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="models:ReservationCard">
+                                <Border Classes="panel" Padding="18" Margin="0,0,0,10">
+                                    <Grid ColumnDefinitions="58,*,Auto,Auto" RowDefinitions="Auto,Auto">
+                                        <Border Grid.RowSpan="2" Width="46" Height="46" CornerRadius="10" Background="#1D2C3B">
+                                            <TextBlock Text="▣" Foreground="#72B8FF" FontSize="21"
+                                                       HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                        </Border>
+                                        <TextBlock Grid.Column="1" Text="{Binding ClientName}" FontWeight="SemiBold" />
+                                        <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding ComputerLabel}" FontSize="12" Classes="muted" />
+                                        <StackPanel Grid.Column="2" Grid.RowSpan="2" HorizontalAlignment="Right" Spacing="3">
+                                            <TextBlock Text="{Binding StartText}" FontWeight="Bold" HorizontalAlignment="Right" />
+                                            <TextBlock Text="{Binding DurationText}" FontSize="11" Classes="muted" HorizontalAlignment="Right" />
+                                            <TextBlock Text="{Binding Status}" FontSize="10" Foreground="#72B8FF" HorizontalAlignment="Right" />
+                                        </StackPanel>
+                                        <Button Grid.Column="3" Grid.RowSpan="2" Classes="secondary" Content="×" ToolTip.Tip="Скасувати бронювання"
+                                                Command="{Binding $parent[Window].DataContext.CancelReservationCommand}"
+                                                CommandParameter="{Binding Id}" VerticalAlignment="Center" Margin="12,0,0,0" />
+                                    </Grid>
+                                </Border>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </StackPanel>
+
+                <StackPanel IsVisible="{Binding IsComputers}" Spacing="16">
+                    <Grid ColumnDefinitions="*,Auto">
+                        <StackPanel Spacing="4">
+                            <TextBlock Text="Робочі місця клубу" Classes="section-title" />
+                            <TextBlock Text="Внесіть конфігурації зі своєї інвентаризації. LEOPARD не зчитує характеристики з ПК автоматично."
+                                       Classes="muted" FontSize="12" TextWrapping="Wrap" />
+                        </StackPanel>
+                        <Button Grid.Column="1" Classes="primary" Command="{Binding ShowNewComputerDialogCommand}"
+                                Content="＋  Додати ПК" VerticalAlignment="Center" Margin="10,0,0,0" />
+                    </Grid>
+                    <Border Classes="panel" Padding="16" IsVisible="{Binding HasNoComputers}">
+                        <TextBlock Text="У базі ще немає робочих місць. Додайте фактичний ПК із характеристиками."
+                                   Classes="muted" TextWrapping="Wrap" />
+                    </Border>
+                    <ItemsControl ItemsSource="{Binding Computers}">
+                        <ItemsControl.ItemsPanel>
+                            <ItemsPanelTemplate><WrapPanel Orientation="Horizontal" /></ItemsPanelTemplate>
+                        </ItemsControl.ItemsPanel>
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="models:ComputerCard">
+                                <Border Classes="panel" Width="220" Padding="16" Margin="0,0,12,12">
+                                    <StackPanel Spacing="8">
+                                        <Grid ColumnDefinitions="*,Auto">
+                                            <TextBlock Text="{Binding ComputerLabel}" FontWeight="Bold" FontSize="15" />
+                                            <TextBlock Grid.Column="1" Text="{Binding Zone}" FontSize="9" Foreground="#9BA5B2" />
+                                        </Grid>
+                                        <Border Background="#202833" CornerRadius="9" Padding="8,5" HorizontalAlignment="Left">
+                                            <TextBlock Text="{Binding Status}" FontSize="11" Foreground="{Binding StatusColor}" />
+                                        </Border>
+                                        <TextBlock Text="{Binding Details}" FontSize="11" Classes="muted" TextWrapping="Wrap" />
+                                        <Border Height="1" Background="#29313C" />
+                                        <StackPanel Spacing="5">
+                                            <TextBlock Text="ХАРАКТЕРИСТИКИ" FontSize="9" Foreground="#7E8997" FontWeight="Bold" />
+                                            <TextBlock Text="{Binding Processor}" FontSize="10" TextWrapping="Wrap" />
+                                            <TextBlock Text="{Binding GraphicsCard}" FontSize="10" TextWrapping="Wrap" />
+                                            <Grid ColumnDefinitions="*,*">
+                                                <TextBlock Text="{Binding Memory}" FontSize="10" Classes="muted" />
+                                                <TextBlock Grid.Column="1" Text="{Binding Storage}" FontSize="10" Classes="muted" />
+                                            </Grid>
+                                            <TextBlock Text="{Binding Monitor}" FontSize="10" Foreground="#AAB3BF" />
+                                        </StackPanel>
+                                    </StackPanel>
+                                </Border>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </StackPanel>
+
+                <StackPanel IsVisible="{Binding IsClients}" Spacing="16">
+                    <Grid ColumnDefinitions="*,Auto">
+                        <StackPanel Spacing="4">
+                            <TextBlock Text="Клієнти клубу" Classes="section-title" />
+                            <TextBlock Text="Контакти та вподобання зберігаються у локальній базі клубу."
+                                       Classes="muted" FontSize="12" TextWrapping="Wrap" />
+                        </StackPanel>
+                        <Button Grid.Column="1" Classes="primary" Command="{Binding ShowNewClientDialogCommand}"
+                                Content="＋  Додати клієнта" VerticalAlignment="Center" />
+                    </Grid>
+                    <TextBox PlaceholderText="Пошук за ім’ям, телефоном або грою"
+                             Text="{Binding ClientFilterText, UpdateSourceTrigger=PropertyChanged}" />
+                    <Border Classes="panel" Padding="10">
+                        <TextBlock Text="{Binding StatusMessage}" FontSize="11" Classes="muted" TextWrapping="Wrap" />
+                    </Border>
+                    <ItemsControl ItemsSource="{Binding VisibleClients}">
+                        <ItemsControl.ItemsPanel><ItemsPanelTemplate><WrapPanel /></ItemsPanelTemplate></ItemsControl.ItemsPanel>
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="models:ClientCard">
+                                <Border Classes="panel" Width="260" Padding="16" Margin="0,0,12,12">
+                                    <StackPanel Spacing="7">
+                                        <TextBlock Text="{Binding Name}" FontWeight="SemiBold" />
+                                        <TextBlock Text="{Binding Phone}" FontSize="12" Classes="muted" />
+                                        <TextBlock Text="{Binding FavoriteGame}" FontSize="11" Foreground="#C7F36B" />
+                                        <TextBlock Text="{Binding VisitsText}" FontSize="10" Classes="muted" />
+                                        <TextBlock Text="{Binding LoyaltyText}" FontSize="10" Foreground="#C7F36B" />
+                                    </StackPanel>
+                                </Border>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                    <Border Classes="panel" Padding="16" IsVisible="{Binding HasNoClients}">
+                        <TextBlock Text="Клієнтів за цим пошуком не знайдено."
+                                   Classes="muted" TextWrapping="Wrap" />
+                    </Border>
+                </StackPanel>
+
+                <StackPanel IsVisible="{Binding IsTariffs}" Spacing="16">
+                    <Grid ColumnDefinitions="*,Auto">
+                        <TextBlock Text="Створіть тарифні правила, які використовуєте у клубі. Сума сеансу є розрахунковою; списання коштів не виконується."
+                                   Classes="muted" TextWrapping="Wrap" VerticalAlignment="Center" />
+                        <Button Grid.Column="1" Classes="primary" Command="{Binding ShowNewTariffDialogCommand}"
+                                Content="＋  Додати тариф" Margin="10,0,0,0" />
+                    </Grid>
+                    <Border Classes="panel" Padding="16" IsVisible="{Binding HasNoTariffs}">
+                        <TextBlock Text="Тарифів ще немає. Додайте актуальну погодинну ціну, щоб починати сеанси."
+                                   Classes="muted" TextWrapping="Wrap" />
+                    </Border>
+                    <ItemsControl ItemsSource="{Binding Tariffs}">
+                        <ItemsControl.ItemsPanel><ItemsPanelTemplate><WrapPanel /></ItemsPanelTemplate></ItemsControl.ItemsPanel>
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="models:TariffCard">
+                                <Border Classes="panel" Width="260" Padding="18" Margin="0,0,12,12">
+                                    <StackPanel Spacing="10">
+                                        <TextBlock Text="{Binding Badge}" FontSize="9" Foreground="#C7F36B" FontWeight="Bold" />
+                                        <TextBlock Text="{Binding Name}" FontSize="19" FontWeight="Bold" />
+                                        <TextBlock Text="{Binding Description}" FontSize="11" Classes="muted" TextWrapping="Wrap" />
+                                        <StackPanel Orientation="Horizontal" Spacing="4">
+                                            <TextBlock Text="{Binding PriceText}" FontSize="23" FontWeight="Bold" />
+                                            <TextBlock Text="₴ / год" VerticalAlignment="Bottom" Margin="0,0,0,4" Classes="muted" />
+                                        </StackPanel>
+                                    </StackPanel>
+                                </Border>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </StackPanel>
+
+                <StackPanel IsVisible="{Binding IsHistory}" Spacing="16">
+                    <Border Classes="panel" Padding="16">
+                        <Grid ColumnDefinitions="*,Auto">
+                            <StackPanel Spacing="4">
+                                <TextBlock Text="Звіт за сьогодні" Classes="section-title" FontSize="18" />
+                                <TextBlock Text="Орієнтовна вартість завершених сеансів. Це не касовий звіт і не підтвердження оплати."
+                                           Classes="muted" FontSize="11" TextWrapping="Wrap" />
+                            </StackPanel>
+                            <TextBlock Grid.Column="1" Text="{Binding TodayEstimatedRevenue}" Foreground="#C7F36B"
+                                       FontSize="24" FontWeight="Bold" VerticalAlignment="Center" />
+                        </Grid>
+                    </Border>
+                    <Border Classes="panel" Padding="16" IsVisible="{Binding HasNoHistory}">
+                        <TextBlock Text="Завершених сеансів ще немає. Після першого завершення запис з’явиться тут."
+                                   Classes="muted" TextWrapping="Wrap" />
+                    </Border>
+                    <ItemsControl ItemsSource="{Binding HistorySessions}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="models:HistorySessionCard">
+                                <Border Classes="panel" Padding="15" Margin="0,0,0,9">
+                                    <Grid RowDefinitions="Auto,Auto" ColumnDefinitions="*,Auto">
+                                        <StackPanel Spacing="3">
+                                            <TextBlock Text="{Binding ClientName}" FontWeight="SemiBold" />
+                                            <StackPanel Orientation="Horizontal" Spacing="5">
+                                                <TextBlock Text="{Binding ComputerLabel}" Classes="muted" FontSize="11" />
+                                                <TextBlock Text="·" Classes="muted" FontSize="11" />
+                                                <TextBlock Text="{Binding Game}" Classes="muted" FontSize="11" />
+                                            </StackPanel>
+                                        </StackPanel>
+                                        <StackPanel Grid.Column="1" Spacing="3" HorizontalAlignment="Right">
+                                            <TextBlock Text="{Binding AmountText}" Foreground="#C7F36B" FontWeight="Bold" HorizontalAlignment="Right" />
+                                            <TextBlock Text="{Binding PointsText}" Classes="muted" FontSize="10" HorizontalAlignment="Right" />
+                                        </StackPanel>
+                                        <TextBlock Grid.Row="1" Text="{Binding PeriodText}" Classes="muted" FontSize="10" Margin="0,8,0,0" />
+                                        <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding DurationText}" Classes="muted" FontSize="10" HorizontalAlignment="Right" Margin="0,8,0,0" />
+                                    </Grid>
+                                </Border>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </StackPanel>
+            </StackPanel>
+        </ScrollViewer>
+
+        <Border Grid.Column="1" Grid.Row="1" IsVisible="{Binding IsCompact}"
+                Background="#10141B" BorderBrush="#242B36" BorderThickness="0,1,0,0" Padding="4,5">
+            <UniformGrid Columns="4">
+                <Button Classes="nav" Classes.active="{Binding IsDashboard}" Padding="0,7" Command="{Binding ShowDashboardCommand}" Content="⌂&#10;Огляд" FontSize="9" />
+                <Button Classes="nav" Classes.active="{Binding IsSessions}" Padding="0,7" Command="{Binding ShowSessionsCommand}" Content="◉&#10;Сеанси" FontSize="9" />
+                <Button Classes="nav" Classes.active="{Binding IsBookings}" Padding="0,7" Command="{Binding ShowBookingsCommand}" Content="▣&#10;Броні" FontSize="9" />
+                <Button Classes="nav" Classes.active="{Binding IsComputers}" Padding="0,7" Command="{Binding ShowComputersCommand}" Content="▦&#10;ПК" FontSize="9" />
+                <Button Classes="nav" Classes.active="{Binding IsClients}" Padding="0,7" Command="{Binding ShowClientsCommand}" Content="♙&#10;Клієнти" FontSize="9" />
+                <Button Classes="nav" Classes.active="{Binding IsTariffs}" Padding="0,7" Command="{Binding ShowTariffsCommand}" Content="◇&#10;Тарифи" FontSize="9" />
+                <Button Classes="nav" Classes.active="{Binding IsHistory}" Padding="0,7" Command="{Binding ShowHistoryCommand}" Content="◷&#10;Історія" FontSize="9" />
+            </UniformGrid>
+        </Border>
+
+        <Border Grid.Column="0" Grid.ColumnSpan="2" Grid.Row="0" Grid.RowSpan="2"
+                IsVisible="{Binding IsStartDialogOpen}" Background="#C9000000">
+            <Border Classes="panel" MaxWidth="560" HorizontalAlignment="Center" VerticalAlignment="Center"
+                    Margin="14" Padding="22">
+                <ScrollViewer MaxHeight="740" HorizontalScrollBarVisibility="Disabled">
+                    <StackPanel Spacing="14">
+                        <Grid ColumnDefinitions="*,Auto">
+                            <StackPanel Spacing="4">
+                                <TextBlock Text="Новий сеанс" Classes="section-title" FontSize="22" />
+                                <TextBlock Text="Оберіть місце, клієнта й умови гри."
+                                           Classes="muted" FontSize="12" TextWrapping="Wrap" />
+                            </StackPanel>
+                            <Button Grid.Column="1" Classes="secondary" Command="{Binding CancelStartSessionCommand}"
+                                    Content="✕" VerticalAlignment="Top" />
+                        </Grid>
+
+                        <StackPanel Spacing="6">
+                            <TextBlock Text="КОМП’ЮТЕР" FontSize="10" Foreground="#9BA5B2" FontWeight="Bold" />
+                            <ComboBox ItemsSource="{Binding AvailableComputers}" SelectedItem="{Binding SelectedComputer}">
+                                <ComboBox.ItemTemplate>
+                                    <DataTemplate x:DataType="models:ComputerCard">
+                                        <TextBlock Text="{Binding ChoiceText}" FontSize="12" />
+                                    </DataTemplate>
+                                </ComboBox.ItemTemplate>
+                            </ComboBox>
+                            <Border Background="#10151C" CornerRadius="8" Padding="10">
+                                <StackPanel Spacing="3">
+                                    <TextBlock Text="ХАРАКТЕРИСТИКИ ПК" FontSize="9" Foreground="#7E8997" FontWeight="Bold" />
+                                    <TextBlock Text="{Binding SelectedComputerSpecText}" FontSize="11"
+                                               Foreground="#D7DDE5" TextWrapping="Wrap" />
+                                </StackPanel>
+                            </Border>
+                        </StackPanel>
+
+                        <StackPanel Spacing="6">
+                            <Grid ColumnDefinitions="*,Auto">
+                                <TextBlock Text="КЛІЄНТ" FontSize="10" Foreground="#9BA5B2" FontWeight="Bold"
+                                           VerticalAlignment="Center" />
+                                <Button Grid.Column="1" Classes="secondary" Padding="8,5"
+                                        Command="{Binding ShowNewClientDialogCommand}" Content="＋ Новий клієнт" FontSize="10" />
+                            </Grid>
+                            <ComboBox ItemsSource="{Binding Clients}" SelectedItem="{Binding SelectedClient}">
+                                <ComboBox.ItemTemplate>
+                                    <DataTemplate x:DataType="models:ClientCard">
+                                        <TextBlock Text="{Binding ChoiceText}" FontSize="12" />
+                                    </DataTemplate>
+                                </ComboBox.ItemTemplate>
+                            </ComboBox>
+                        </StackPanel>
+
+                        <Grid ColumnDefinitions="*,*" ColumnSpacing="12">
+                            <StackPanel Spacing="6">
+                                <TextBlock Text="ГРА" FontSize="10" Foreground="#9BA5B2" FontWeight="Bold" />
+                                <ComboBox ItemsSource="{Binding GameOptions}" SelectedItem="{Binding SelectedGame}" />
+                            </StackPanel>
+                            <StackPanel Grid.Column="1" Spacing="6">
+                                <TextBlock Text="ТРИВАЛІСТЬ" FontSize="10" Foreground="#9BA5B2" FontWeight="Bold" />
+                                <ComboBox ItemsSource="{Binding DurationOptions}" SelectedItem="{Binding SelectedDuration}">
+                                    <ComboBox.ItemTemplate>
+                                        <DataTemplate x:DataType="models:DurationChoice">
+                                            <TextBlock Text="{Binding DisplayText}" FontSize="12" />
+                                        </DataTemplate>
+                                    </ComboBox.ItemTemplate>
+                                </ComboBox>
+                            </StackPanel>
+                        </Grid>
+
+                        <StackPanel Spacing="6">
+                            <TextBlock Text="ТАРИФ" FontSize="10" Foreground="#9BA5B2" FontWeight="Bold" />
+                            <ComboBox ItemsSource="{Binding Tariffs}" SelectedItem="{Binding SelectedTariff}">
+                                <ComboBox.ItemTemplate>
+                                    <DataTemplate x:DataType="models:TariffCard">
+                                        <TextBlock Text="{Binding ChoiceText}" FontSize="12" />
+                                    </DataTemplate>
+                                </ComboBox.ItemTemplate>
+                            </ComboBox>
+                        </StackPanel>
+
+                        <Border Background="#202A1B" CornerRadius="9" Padding="12">
+                            <Grid ColumnDefinitions="*,Auto">
+                                <StackPanel Spacing="3">
+                                    <TextBlock Text="ВАРТІСТЬ СЕАНСУ" FontSize="9" Foreground="#AAB3BF" />
+                                    <TextBlock Text="Орієнтовна сума за тарифом, без списання коштів"
+                                               FontSize="10" Classes="muted" TextWrapping="Wrap" />
+                                </StackPanel>
+                                <TextBlock Grid.Column="1" Text="{Binding EstimatedCostText}" Foreground="#C7F36B"
+                                           FontWeight="Bold" VerticalAlignment="Center" />
+                            </Grid>
+                        </Border>
+
+                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8">
+                            <Button Classes="secondary" Command="{Binding CancelStartSessionCommand}" Content="Скасувати" />
+                            <Button Classes="primary" Command="{Binding ConfirmStartSessionCommand}"
+                                    IsEnabled="{Binding CanConfirmStart}" Content="Почати сеанс" />
+                        </StackPanel>
+                    </StackPanel>
+                </ScrollViewer>
+            </Border>
+        </Border>
+
+        <Border Grid.Column="0" Grid.ColumnSpan="2" Grid.Row="0" Grid.RowSpan="2"
+                IsVisible="{Binding IsNewClientDialogOpen}" Background="#C9000000">
+            <Border Classes="panel" MaxWidth="480" HorizontalAlignment="Center" VerticalAlignment="Center"
+                    Margin="14" Padding="22">
+                <StackPanel Spacing="15">
+                    <Grid ColumnDefinitions="*,Auto">
+                        <StackPanel Spacing="4">
+                            <TextBlock Text="Новий клієнт" Classes="section-title" FontSize="22" />
+                            <TextBlock Text="Додайте контакт і вподобання для швидкого оформлення сеансів."
+                                       Classes="muted" FontSize="12" TextWrapping="Wrap" />
+                        </StackPanel>
+                        <Button Grid.Column="1" Classes="secondary" Command="{Binding CancelNewClientDialogCommand}"
+                                Content="✕" VerticalAlignment="Top" />
+                    </Grid>
+
+                    <StackPanel Spacing="6">
+                        <TextBlock Text="ІМ’Я КЛІЄНТА" FontSize="10" Foreground="#9BA5B2" FontWeight="Bold" />
+                        <TextBox PlaceholderText="Наприклад, Олена Коваль"
+                                 Text="{Binding NewClientName, UpdateSourceTrigger=PropertyChanged}" />
+                    </StackPanel>
+
+                    <StackPanel Spacing="6">
+                        <TextBlock Text="ТЕЛЕФОН" FontSize="10" Foreground="#9BA5B2" FontWeight="Bold" />
+                        <TextBox PlaceholderText="+380 00 000 00 00"
+                                 Text="{Binding NewClientPhone, UpdateSourceTrigger=PropertyChanged}" />
+                        <TextBlock Text="Введіть від 7 до 15 цифр; форматування номера зберігається."
+                                   FontSize="10" Classes="muted" TextWrapping="Wrap" />
+                    </StackPanel>
+
+                    <StackPanel Spacing="6">
+                        <TextBlock Text="УЛЮБЛЕНА ГРА" FontSize="10" Foreground="#9BA5B2" FontWeight="Bold" />
+                        <ComboBox ItemsSource="{Binding GameOptions}" SelectedItem="{Binding NewClientFavoriteGame}" />
+                    </StackPanel>
+
+                    <TextBlock Text="{Binding NewClientErrorMessage}" IsVisible="{Binding HasClientFormError}"
+                               Foreground="#FF8D8D" FontSize="11" TextWrapping="Wrap" />
+
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8">
+                        <Button Classes="secondary" Command="{Binding CancelNewClientDialogCommand}" Content="Скасувати" />
+                        <Button Classes="primary" Command="{Binding SaveNewClientCommand}"
+                                IsEnabled="{Binding CanSaveClient}" Content="Зберегти клієнта" />
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+        </Border>
+
+        <Border Grid.Column="0" Grid.ColumnSpan="2" Grid.Row="0" Grid.RowSpan="2"
+                IsVisible="{Binding IsComputerDialogOpen}" Background="#C9000000">
+            <Border Classes="panel" MaxWidth="560" HorizontalAlignment="Center" VerticalAlignment="Center"
+                    Margin="14" Padding="22">
+                <ScrollViewer MaxHeight="760" HorizontalScrollBarVisibility="Disabled">
+                    <StackPanel Spacing="12">
+                        <Grid ColumnDefinitions="*,Auto">
+                            <StackPanel Spacing="4">
+                                <TextBlock Text="Нове робоче місце" Classes="section-title" FontSize="22" />
+                                <TextBlock Text="Внесіть фактичні інвентарні дані комп’ютера."
+                                           Classes="muted" FontSize="12" TextWrapping="Wrap" />
+                            </StackPanel>
+                            <Button Grid.Column="1" Classes="secondary" Command="{Binding CancelNewComputerDialogCommand}" Content="✕" />
+                        </Grid>
+                        <Grid ColumnDefinitions="*,*" ColumnSpacing="10">
+                            <StackPanel Spacing="5"><TextBlock Text="НАЗВА / НОМЕР" FontSize="10" Classes="muted" /><TextBox PlaceholderText="PC-01" Text="{Binding NewComputerLabel, UpdateSourceTrigger=PropertyChanged}" /></StackPanel>
+                            <StackPanel Grid.Column="1" Spacing="5"><TextBlock Text="ЗОНА" FontSize="10" Classes="muted" /><TextBox PlaceholderText="Основна зала" Text="{Binding NewComputerZone, UpdateSourceTrigger=PropertyChanged}" /></StackPanel>
+                        </Grid>
+                        <StackPanel Spacing="5"><TextBlock Text="ПРОЦЕСОР" FontSize="10" Classes="muted" /><TextBox PlaceholderText="Фактична модель CPU" Text="{Binding NewComputerProcessor}" /></StackPanel>
+                        <StackPanel Spacing="5"><TextBlock Text="ВІДЕОКАРТА" FontSize="10" Classes="muted" /><TextBox PlaceholderText="Фактична модель GPU" Text="{Binding NewComputerGraphicsCard}" /></StackPanel>
+                        <Grid ColumnDefinitions="*,*" ColumnSpacing="10">
+                            <StackPanel Spacing="5"><TextBlock Text="ОПЕРАТИВНА ПАМ’ЯТЬ" FontSize="10" Classes="muted" /><TextBox PlaceholderText="32 GB DDR5" Text="{Binding NewComputerMemory}" /></StackPanel>
+                            <StackPanel Grid.Column="1" Spacing="5"><TextBlock Text="НАКОПИЧУВАЧ" FontSize="10" Classes="muted" /><TextBox PlaceholderText="1 TB NVMe" Text="{Binding NewComputerStorage}" /></StackPanel>
+                        </Grid>
+                        <StackPanel Spacing="5"><TextBlock Text="МОНІТОР" FontSize="10" Classes="muted" /><TextBox PlaceholderText="27″ QHD · 240 Hz" Text="{Binding NewComputerMonitor}" /></StackPanel>
+                        <TextBlock Text="{Binding ComputerFormError}" Foreground="#FF8D8D" FontSize="11" TextWrapping="Wrap" />
+                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8">
+                            <Button Classes="secondary" Command="{Binding CancelNewComputerDialogCommand}" Content="Скасувати" />
+                            <Button Classes="primary" Command="{Binding SaveNewComputerCommand}" Content="Додати до обліку" />
+                        </StackPanel>
+                    </StackPanel>
+                </ScrollViewer>
+            </Border>
+        </Border>
+
+        <Border Grid.Column="0" Grid.ColumnSpan="2" Grid.Row="0" Grid.RowSpan="2"
+                IsVisible="{Binding IsTariffDialogOpen}" Background="#C9000000">
+            <Border Classes="panel" MaxWidth="500" HorizontalAlignment="Center" VerticalAlignment="Center"
+                    Margin="14" Padding="22">
+                <StackPanel Spacing="13">
+                    <Grid ColumnDefinitions="*,Auto">
+                        <StackPanel Spacing="4">
+                            <TextBlock Text="Новий тариф" Classes="section-title" FontSize="22" />
+                            <TextBlock Text="Ціна зберігається для обліку й розрахунку вартості сеансу."
+                                       Classes="muted" FontSize="12" TextWrapping="Wrap" />
+                        </StackPanel>
+                        <Button Grid.Column="1" Classes="secondary" Command="{Binding CancelNewTariffDialogCommand}" Content="✕" />
+                    </Grid>
+                    <StackPanel Spacing="5"><TextBlock Text="НАЗВА" FontSize="10" Classes="muted" /><TextBox PlaceholderText="Стандарт" Text="{Binding NewTariffName, UpdateSourceTrigger=PropertyChanged}" /></StackPanel>
+                    <StackPanel Spacing="5"><TextBlock Text="ОПИС" FontSize="10" Classes="muted" /><TextBox PlaceholderText="Погодинний тариф" Text="{Binding NewTariffDescription}" /></StackPanel>
+                    <Grid ColumnDefinitions="*,*" ColumnSpacing="10">
+                        <StackPanel Spacing="5"><TextBlock Text="ЦІНА ЗА ГОДИНУ, ₴" FontSize="10" Classes="muted" /><TextBox PlaceholderText="120" Text="{Binding NewTariffPrice, UpdateSourceTrigger=PropertyChanged}" /></StackPanel>
+                        <StackPanel Grid.Column="1" Spacing="5"><TextBlock Text="ПОЗНАЧКА" FontSize="10" Classes="muted" /><TextBox PlaceholderText="ПОПУЛЯРНИЙ" Text="{Binding NewTariffBadge}" /></StackPanel>
+                    </Grid>
+                    <TextBlock Text="{Binding TariffFormError}" Foreground="#FF8D8D" FontSize="11" TextWrapping="Wrap" />
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8">
+                        <Button Classes="secondary" Command="{Binding CancelNewTariffDialogCommand}" Content="Скасувати" />
+                        <Button Classes="primary" Command="{Binding SaveNewTariffCommand}" Content="Зберегти тариф" />
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+        </Border>
+
+        <Border Grid.Column="0" Grid.ColumnSpan="2" Grid.Row="0" Grid.RowSpan="2"
+                IsVisible="{Binding IsReservationDialogOpen}" Background="#C9000000">
+            <Border Classes="panel" MaxWidth="520" HorizontalAlignment="Center" VerticalAlignment="Center"
+                    Margin="14" Padding="22">
+                <StackPanel Spacing="13">
+                    <Grid ColumnDefinitions="*,Auto">
+                        <StackPanel Spacing="4">
+                            <TextBlock Text="Нове бронювання" Classes="section-title" FontSize="22" />
+                            <TextBlock Text="Слот перевіряється на перетин із сеансами та бронюваннями."
+                                       Classes="muted" FontSize="12" TextWrapping="Wrap" />
+                        </StackPanel>
+                        <Button Grid.Column="1" Classes="secondary" Command="{Binding CancelNewReservationDialogCommand}" Content="✕" />
+                    </Grid>
+                    <StackPanel Spacing="5">
+                        <TextBlock Text="КОМП’ЮТЕР" FontSize="10" Classes="muted" />
+                        <ComboBox ItemsSource="{Binding Computers}" SelectedItem="{Binding SelectedReservationComputer}">
+                            <ComboBox.ItemTemplate><DataTemplate x:DataType="models:ComputerCard"><TextBlock Text="{Binding ChoiceText}" /></DataTemplate></ComboBox.ItemTemplate>
+                        </ComboBox>
+                    </StackPanel>
+                    <StackPanel Spacing="5">
+                        <TextBlock Text="КЛІЄНТ" FontSize="10" Classes="muted" />
+                        <ComboBox ItemsSource="{Binding Clients}" SelectedItem="{Binding SelectedReservationClient}">
+                            <ComboBox.ItemTemplate><DataTemplate x:DataType="models:ClientCard"><TextBlock Text="{Binding ChoiceText}" /></DataTemplate></ComboBox.ItemTemplate>
+                        </ComboBox>
+                    </StackPanel>
+                    <Grid ColumnDefinitions="*,*" ColumnSpacing="10">
+                        <StackPanel Spacing="5"><TextBlock Text="ДАТА" FontSize="10" Classes="muted" /><DatePicker SelectedDate="{Binding NewReservationDate}" /></StackPanel>
+                        <StackPanel Grid.Column="1" Spacing="5"><TextBlock Text="ЧАС (ГГ:ХВ)" FontSize="10" Classes="muted" /><TextBox PlaceholderText="18:00" Text="{Binding NewReservationTime, UpdateSourceTrigger=PropertyChanged}" /></StackPanel>
+                    </Grid>
+                    <StackPanel Spacing="5">
+                        <TextBlock Text="ТРИВАЛІСТЬ" FontSize="10" Classes="muted" />
+                        <ComboBox ItemsSource="{Binding DurationOptions}" SelectedItem="{Binding SelectedReservationDuration}">
+                            <ComboBox.ItemTemplate><DataTemplate x:DataType="models:DurationChoice"><TextBlock Text="{Binding DisplayText}" /></DataTemplate></ComboBox.ItemTemplate>
+                        </ComboBox>
+                    </StackPanel>
+                    <TextBlock Text="{Binding ReservationFormError}" Foreground="#FF8D8D" FontSize="11" TextWrapping="Wrap" />
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8">
+                        <Button Classes="secondary" Command="{Binding CancelNewReservationDialogCommand}" Content="Скасувати" />
+                        <Button Classes="primary" Command="{Binding SaveNewReservationCommand}" Content="Створити бронювання" />
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+        </Border>
+    </Grid>
+</Window>

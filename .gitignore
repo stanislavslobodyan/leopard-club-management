@@ -1,0 +1,25 @@
+# .NET build output
+**/bin/
+**/obj/
+**/TestResults/
+
+# Local application data and secrets
+*.db
+*.sqlite
+*.sqlite3
+*.db-shm
+*.db-wal
+*.user
+*.suo
+
+# IDE and OS files
+.vs/
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+
+# Local scratch/build output and packaged exports
+/work/
+/outputs/
+
