@@ -78,6 +78,13 @@ public partial class MainViewModel : ViewModelBase
     public int FreeCount => Computers.Count(c => c.Status == "Вільний");
     public int ReservedCount => Computers.Count(c => c.Status == "Заброньований");
     public int ComputerCount => Computers.Count;
+    public int ResponsiveCardColumns => IsCompact ? 1 : 4;
+    public int ResponsiveMetricColumns => IsCompact ? 2 : 4;
+    public bool IsMobileStartAction => IsCompact && (IsDashboard || IsSessions);
+    public bool IsMobileBookingAction => IsCompact && IsBookings;
+    public bool IsMobileComputerAction => IsCompact && IsComputers;
+    public bool IsMobileClientAction => IsCompact && IsClients;
+    public bool IsMobileTariffAction => IsCompact && IsTariffs;
     public string ActiveComputerRatio => $"{ActiveCount} / {ComputerCount}";
     public double OccupancyPercent => ComputerCount == 0 ? 0 : Math.Round(ActiveCount * 100d / ComputerCount);
     public string OccupancyText => $"{OccupancyPercent:0}% завантаженості";
@@ -194,6 +201,11 @@ public partial class MainViewModel : ViewModelBase
     [NotifyPropertyChangedFor(nameof(IsTariffs))]
     [NotifyPropertyChangedFor(nameof(IsHistory))]
     [NotifyPropertyChangedFor(nameof(IsSettings))]
+    [NotifyPropertyChangedFor(nameof(IsMobileStartAction))]
+    [NotifyPropertyChangedFor(nameof(IsMobileBookingAction))]
+    [NotifyPropertyChangedFor(nameof(IsMobileComputerAction))]
+    [NotifyPropertyChangedFor(nameof(IsMobileClientAction))]
+    [NotifyPropertyChangedFor(nameof(IsMobileTariffAction))]
     [NotifyPropertyChangedFor(nameof(PageSubtitle))]
     private string selectedPage = "Огляд";
 
@@ -215,6 +227,13 @@ public partial class MainViewModel : ViewModelBase
     [NotifyPropertyChangedFor(nameof(ContentMargin))]
     [NotifyPropertyChangedFor(nameof(IsDashboardWide))]
     [NotifyPropertyChangedFor(nameof(IsDashboardCompact))]
+    [NotifyPropertyChangedFor(nameof(ResponsiveCardColumns))]
+    [NotifyPropertyChangedFor(nameof(ResponsiveMetricColumns))]
+    [NotifyPropertyChangedFor(nameof(IsMobileStartAction))]
+    [NotifyPropertyChangedFor(nameof(IsMobileBookingAction))]
+    [NotifyPropertyChangedFor(nameof(IsMobileComputerAction))]
+    [NotifyPropertyChangedFor(nameof(IsMobileClientAction))]
+    [NotifyPropertyChangedFor(nameof(IsMobileTariffAction))]
     private bool isCompact;
 
     [ObservableProperty]
@@ -413,11 +432,18 @@ public partial class MainViewModel : ViewModelBase
         {
             var start = DateTime.Today.AddHours(startHour + i);
             var end = start.AddHours(1);
-            var sessions = _sessionCache.Count(s => s.StartedAt < end && s.PlannedEnd > start);
+            var activeSessions = _sessionCache.Count(s => s.StartedAt < end && s.PlannedEnd > start);
+            var completedSessions = HistorySessions.Count(s => s.StartedAt < end && s.EndedAt > start);
             var reservations = Reservations.Count(r => r.StartsAt < end && r.StartsAt.AddMinutes(r.DurationMinutes) > start);
-            var occupied = Math.Min(ComputerCount, sessions + reservations);
+            var occupied = Math.Min(ComputerCount, activeSessions + completedSessions + reservations);
             var height = ComputerCount == 0 ? 6 : Math.Max(6, Math.Round(occupied * 60d / ComputerCount));
-            HourlyOccupancy.Add(new OccupancyBarViewModel(start.ToString("HH:mm"), occupied, height));
+            HourlyOccupancy.Add(new OccupancyBarViewModel(start.ToString("HH:mm"), occupied, height, "#252D39"));
+        }
+        var busiestHour = HourlyOccupancy.Where(bar => bar.Count > 0).MaxBy(bar => bar.Count);
+        if (busiestHour is not null)
+        {
+            var index = HourlyOccupancy.IndexOf(busiestHour);
+            HourlyOccupancy[index] = busiestHour with { BarColor = "#C7F36B" };
         }
     }
 
