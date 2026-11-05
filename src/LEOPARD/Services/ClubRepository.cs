@@ -146,7 +146,7 @@ public sealed class ClubRepository
         }
         if (hasReservationConflict) { tx.Rollback(); return false; }
 
-        Execute(db,tx,"INSERT INTO Sessions(ComputerId,ClientId,Game,TariffId,StartedAt,PlannedEnd) VALUES($pc,$client,$game,$tariff,$start,$end); UPDATE Clients SET Visits=Visits+1 WHERE Id=$client;",
+        Execute(db,tx,"INSERT INTO Sessions(ComputerId,ClientId,Game,TariffId,StartedAt,PlannedEnd) VALUES($pc,$client,$game,$tariff,$start,$end);",
             ("$pc",computerId),("$client",clientId),("$game",game.Trim()),("$tariff",tariffId),
             ("$start",now.ToString("O")),("$end",sessionEnd.ToString("O")));
         tx.Commit();
@@ -182,7 +182,7 @@ public sealed class ClubRepository
         using(var update=db.CreateCommand())
         {
             update.Transaction=tx;
-            update.CommandText="UPDATE Sessions SET EndedAt=$now,PointsAwarded=$points WHERE Id=$id AND EndedAt IS NULL; UPDATE Clients SET LoyaltyPoints=LoyaltyPoints+$points WHERE Id=$client;";
+            update.CommandText="UPDATE Sessions SET EndedAt=$now,PointsAwarded=$points WHERE Id=$id AND EndedAt IS NULL; UPDATE Clients SET Visits=Visits+1,LoyaltyPoints=LoyaltyPoints+$points WHERE Id=$client;";
             update.Parameters.AddWithValue("$now",endedAt.ToString("O")); update.Parameters.AddWithValue("$points",fullHours);
             update.Parameters.AddWithValue("$id",id); update.Parameters.AddWithValue("$client",clientId); update.ExecuteNonQuery();
         }
