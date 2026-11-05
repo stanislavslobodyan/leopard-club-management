@@ -22,6 +22,7 @@ Thumbs.db
 # Local scratch/build output and packaged exports
 /work/
 /outputs/
+/publish/
 
 # Legacy top-level folder is outside the solution
 /Services/

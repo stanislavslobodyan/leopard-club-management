@@ -107,9 +107,9 @@
                         </Border>
                         <Border Classes="metric" Width="176" Height="112" Padding="14" Margin="0,0,8,8">
                             <StackPanel Spacing="5">
-                                <TextBlock Text="ОЦІНКА СЬОГОДНІ" FontSize="10" Foreground="#98A2AF" />
-                                <TextBlock Text="{Binding TodayEstimatedRevenue}" FontSize="24" FontWeight="Bold" Foreground="#C7F36B" />
-                                <TextBlock Text="за завершеними сеансами" FontSize="10" Classes="muted" />
+                                <TextBlock Text="НАРАХОВАНО СЬОГОДНІ" FontSize="10" Foreground="#98A2AF" />
+                                <TextBlock Text="{Binding TodayAccruedAmount}" FontSize="24" FontWeight="Bold" Foreground="#C7F36B" />
+                                <TextBlock Text="сума за тарифом · без оплати" FontSize="10" Classes="muted" />
                             </StackPanel>
                         </Border>
                     </WrapPanel>
@@ -468,10 +468,10 @@
                         <Grid ColumnDefinitions="*,Auto">
                             <StackPanel Spacing="4">
                                 <TextBlock Text="Звіт за сьогодні" Classes="section-title" FontSize="18" />
-                                <TextBlock Text="Орієнтовна вартість завершених сеансів. Це не касовий звіт і не підтвердження оплати."
+                                <TextBlock Text="Нарахована за тарифами сума завершених сеансів. Оплату або касову операцію тут не записуємо."
                                            Classes="muted" FontSize="11" TextWrapping="Wrap" />
                             </StackPanel>
-                            <TextBlock Grid.Column="1" Text="{Binding TodayEstimatedRevenue}" Foreground="#C7F36B"
+                            <TextBlock Grid.Column="1" Text="{Binding TodayAccruedAmount}" Foreground="#C7F36B"
                                        FontSize="24" FontWeight="Bold" VerticalAlignment="Center" />
                         </Grid>
                     </Border>
@@ -601,8 +601,8 @@
                         <Border Background="#202A1B" CornerRadius="9" Padding="12">
                             <Grid ColumnDefinitions="*,Auto">
                                 <StackPanel Spacing="3">
-                                    <TextBlock Text="ВАРТІСТЬ СЕАНСУ" FontSize="9" Foreground="#AAB3BF" />
-                                    <TextBlock Text="Орієнтовна сума за тарифом, без списання коштів"
+                                    <TextBlock Text="ПОПЕРЕДНЯ ВАРТІСТЬ" FontSize="9" Foreground="#AAB3BF" />
+                                    <TextBlock Text="За плановою тривалістю; підсумок буде за фактичним часом"
                                                FontSize="10" Classes="muted" TextWrapping="Wrap" />
                                 </StackPanel>
                                 <TextBlock Grid.Column="1" Text="{Binding EstimatedCostText}" Foreground="#C7F36B"

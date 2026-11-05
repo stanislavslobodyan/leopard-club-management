@@ -38,6 +38,7 @@ classDiagram
       -connectionString
       +GetActiveSessions()
       +GetCompletedSessions()
+      +GetAccruedAmountForDate(date)
       +GetNotifications()
       +GetComputers()
       +GetReservations()
@@ -46,6 +47,7 @@ classDiagram
       +StartSession(...)
       +ExtendSession(id, minutes)
       +EndSession(id)
+      +CalculateCharge(start, end, hourlyRate)
       +AddComputer(...)
       +AddClient(...)
       +AddTariff(...)
@@ -78,7 +80,7 @@ classDiagram
     class TariffCard
     class HistorySessionCard {
       +DurationMinutes
-      +EstimatedAmount
+      +AccruedAmount
       +PointsAwarded
     }
     class ClubNotification {
@@ -94,7 +96,7 @@ classDiagram
     MainViewModel --> ClubRepository : reads and actions
     MainViewModel --> ComputerCard : selections
     MainViewModel --> ClientCard : selections
-    MainViewModel --> TariffCard : selections and estimate
+    MainViewModel --> TariffCard : selections and preview
     MainViewModel --> HistorySessionCard : report list
     MainViewModel --> ClubNotification : in-app alerts
     MainViewModel --> ComputerAgentClient : polls configured endpoints every 20s
@@ -102,7 +104,7 @@ classDiagram
     SessionCardViewModel --> ClubSession : formats timer fields
     ClubRepository --> SQLite : parameterized statements / transactions
     ClubRepository ..> ClubSession : reads active rows
-    ClubRepository ..> HistorySessionCard : reads closed rows
+    ClubRepository ..> HistorySessionCard : reads closed rows and accrued amount
     ClubRepository ..> ComputerCard : reads inventory state
     ClubRepository ..> ReservationCard : reads and creates reservations
     ClubRepository ..> ClientCard : reads and adds points

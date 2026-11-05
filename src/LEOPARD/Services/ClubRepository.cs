@@ -1,5 +1,6 @@
 using LEOPARD.Models;
 using Microsoft.Data.Sqlite;
+using System.Globalization;
 
 namespace LEOPARD.Services;
 
@@ -38,7 +39,7 @@ public sealed class ClubRepository
                 Memory TEXT NOT NULL DEFAULT '', Monitor TEXT NOT NULL DEFAULT '', Storage TEXT NOT NULL DEFAULT '');
             CREATE TABLE IF NOT EXISTS Clients(Id INTEGER PRIMARY KEY, Name TEXT NOT NULL, Phone TEXT NOT NULL, Visits INTEGER NOT NULL DEFAULT 0, FavoriteGame TEXT NOT NULL, LoyaltyPoints INTEGER NOT NULL DEFAULT 0);
             CREATE TABLE IF NOT EXISTS Tariffs(Id INTEGER PRIMARY KEY, Name TEXT NOT NULL, Description TEXT NOT NULL, PricePerHour REAL NOT NULL, Badge TEXT NOT NULL);
-            CREATE TABLE IF NOT EXISTS Sessions(Id INTEGER PRIMARY KEY, ComputerId INTEGER NOT NULL REFERENCES Computers, ClientId INTEGER NOT NULL REFERENCES Clients, Game TEXT NOT NULL, TariffId INTEGER NOT NULL REFERENCES Tariffs, StartedAt TEXT NOT NULL, PlannedEnd TEXT NOT NULL, EndedAt TEXT NULL, PointsAwarded INTEGER NOT NULL DEFAULT 0);
+            CREATE TABLE IF NOT EXISTS Sessions(Id INTEGER PRIMARY KEY, ComputerId INTEGER NOT NULL REFERENCES Computers, ClientId INTEGER NOT NULL REFERENCES Clients, Game TEXT NOT NULL, TariffId INTEGER NOT NULL REFERENCES Tariffs, StartedAt TEXT NOT NULL, PlannedEnd TEXT NOT NULL, EndedAt TEXT NULL, PointsAwarded INTEGER NOT NULL DEFAULT 0, ChargeAmount REAL NULL);
             CREATE TABLE IF NOT EXISTS Reservations(Id INTEGER PRIMARY KEY, ComputerId INTEGER NOT NULL REFERENCES Computers, ClientId INTEGER NOT NULL REFERENCES Clients, StartsAt TEXT NOT NULL, DurationMinutes INTEGER NOT NULL, Status TEXT NOT NULL);
             CREATE TABLE IF NOT EXISTS Notifications(Id INTEGER PRIMARY KEY, SessionId INTEGER NOT NULL REFERENCES Sessions, Kind TEXT NOT NULL, Title TEXT NOT NULL, Message TEXT NOT NULL, CreatedAt TEXT NOT NULL, IsRead INTEGER NOT NULL DEFAULT 0, UNIQUE(SessionId,Kind));
             """;
@@ -50,6 +51,7 @@ public sealed class ClubRepository
         EnsureComputerSpecColumn(connection, "Storage");
         EnsureColumn(connection, "Clients", "LoyaltyPoints", "INTEGER NOT NULL DEFAULT 0");
         EnsureColumn(connection, "Sessions", "PointsAwarded", "INTEGER NOT NULL DEFAULT 0");
+        EnsureColumn(connection, "Sessions", "ChargeAmount", "REAL NULL");
         EnsureColumn(connection, "Computers", "AgentEndpoint", "TEXT NOT NULL DEFAULT ''");
         using var index = connection.CreateCommand();
         index.CommandText = "CREATE UNIQUE INDEX IF NOT EXISTS IX_Computers_Label ON Computers(Label COLLATE NOCASE); CREATE UNIQUE INDEX IF NOT EXISTS IX_Tariffs_Name ON Tariffs(Name COLLATE NOCASE); CREATE UNIQUE INDEX IF NOT EXISTS IX_Clients_Phone ON Clients(Phone); CREATE INDEX IF NOT EXISTS IX_Sessions_ActiveComputer ON Sessions(ComputerId,EndedAt); CREATE INDEX IF NOT EXISTS IX_Reservations_ComputerStart ON Reservations(ComputerId,StartsAt);";
@@ -165,36 +167,49 @@ public sealed class ClubRepository
         cmd.Parameters.AddWithValue("$id",id); cmd.ExecuteNonQuery();
     }
 
-    public void EndSession(int id)
+    public decimal? EndSession(int id)
     {
         using var db=Open(); using var tx=db.BeginTransaction();
-        DateTime startedAt; int clientId; string computerLabel;
+        DateTime startedAt; int clientId; string computerLabel; decimal hourlyRate;
         using (var lookup=db.CreateCommand())
         {
             lookup.Transaction=tx;
-            lookup.CommandText="SELECT s.StartedAt,s.ClientId,c.Label FROM Sessions s JOIN Computers c ON c.Id=s.ComputerId WHERE s.Id=$id AND s.EndedAt IS NULL;";
+            lookup.CommandText="SELECT s.StartedAt,s.ClientId,c.Label,t.PricePerHour FROM Sessions s JOIN Computers c ON c.Id=s.ComputerId JOIN Tariffs t ON t.Id=s.TariffId WHERE s.Id=$id AND s.EndedAt IS NULL;";
             lookup.Parameters.AddWithValue("$id",id);
             using var reader=lookup.ExecuteReader();
-            if(!reader.Read()){tx.Rollback();return;}
+            if(!reader.Read()){tx.Rollback();return null;}
             startedAt=DateTime.Parse(reader.GetString(0)); clientId=reader.GetInt32(1); computerLabel=reader.GetString(2);
+            hourlyRate=Convert.ToDecimal(reader.GetDouble(3));
         }
         var endedAt=DateTime.Now;
-        var fullHours=Math.Max(0,(int)(endedAt-startedAt).TotalMinutes/60);
+        var elapsed=endedAt>startedAt ? endedAt-startedAt : TimeSpan.Zero;
+        var fullHours=(int)(elapsed.Ticks/TimeSpan.TicksPerHour);
+        var chargeAmount=CalculateCharge(startedAt,endedAt,hourlyRate);
         using(var update=db.CreateCommand())
         {
             update.Transaction=tx;
-            update.CommandText="UPDATE Sessions SET EndedAt=$now,PointsAwarded=$points WHERE Id=$id AND EndedAt IS NULL; UPDATE Clients SET Visits=Visits+1,LoyaltyPoints=LoyaltyPoints+$points WHERE Id=$client;";
+            update.CommandText="UPDATE Sessions SET EndedAt=$now,PointsAwarded=$points,ChargeAmount=$charge WHERE Id=$id AND EndedAt IS NULL; UPDATE Clients SET Visits=Visits+1,LoyaltyPoints=LoyaltyPoints+$points WHERE Id=$client;";
             update.Parameters.AddWithValue("$now",endedAt.ToString("O")); update.Parameters.AddWithValue("$points",fullHours);
+            update.Parameters.AddWithValue("$charge",chargeAmount);
             update.Parameters.AddWithValue("$id",id); update.Parameters.AddWithValue("$client",clientId); update.ExecuteNonQuery();
         }
         using(var alert=db.CreateCommand())
         {
             alert.Transaction=tx;
             alert.CommandText="INSERT OR IGNORE INTO Notifications(SessionId,Kind,Title,Message,CreatedAt) VALUES($session,'ended','Сеанс завершено',$message,$now);";
-            alert.Parameters.AddWithValue("$session",id); alert.Parameters.AddWithValue("$message",$"Сеанс на {computerLabel} завершено о {endedAt:HH:mm}. Нараховано балів: {fullHours}.");
+            var formattedCharge = chargeAmount.ToString("0.00", CultureInfo.GetCultureInfo("uk-UA"));
+            alert.Parameters.AddWithValue("$session",id); alert.Parameters.AddWithValue("$message",$"Сеанс на {computerLabel} завершено о {endedAt:HH:mm}. Нараховано за тарифом: {formattedCharge} ₴. Бонусних балів: {fullHours}.");
             alert.Parameters.AddWithValue("$now",endedAt.ToString("O")); alert.ExecuteNonQuery();
         }
         tx.Commit();
+        return chargeAmount;
+    }
+
+    private static decimal CalculateCharge(DateTime startedAt, DateTime endedAt, decimal hourlyRate)
+    {
+        var elapsedTicks = Math.Max(0L, (endedAt - startedAt).Ticks);
+        var unroundedAmount = hourlyRate * elapsedTicks / TimeSpan.TicksPerHour;
+        return decimal.Round(unroundedAmount, 2, MidpointRounding.AwayFromZero);
     }
 
     public IReadOnlyList<ComputerCard> GetComputers()
@@ -338,16 +353,32 @@ public sealed class ClubRepository
     public IReadOnlyList<HistorySessionCard> GetCompletedSessions()
     {
         using var db=Open(); using var cmd=db.CreateCommand();
-        cmd.CommandText="SELECT s.Id,c.Label,cl.Name,s.Game,s.StartedAt,s.EndedAt,t.PricePerHour,s.PointsAwarded FROM Sessions s JOIN Computers c ON c.Id=s.ComputerId JOIN Clients cl ON cl.Id=s.ClientId JOIN Tariffs t ON t.Id=s.TariffId WHERE s.EndedAt IS NOT NULL ORDER BY s.EndedAt DESC LIMIT 300;";
+        cmd.CommandText="SELECT s.Id,c.Label,cl.Name,s.Game,s.StartedAt,s.EndedAt,t.PricePerHour,s.ChargeAmount,s.PointsAwarded FROM Sessions s JOIN Computers c ON c.Id=s.ComputerId JOIN Clients cl ON cl.Id=s.ClientId JOIN Tariffs t ON t.Id=s.TariffId WHERE s.EndedAt IS NOT NULL ORDER BY s.EndedAt DESC LIMIT 300;";
         using var reader=cmd.ExecuteReader(); var result=new List<HistorySessionCard>();
         while(reader.Read())
         {
             var start=DateTime.Parse(reader.GetString(4)); var end=DateTime.Parse(reader.GetString(5));
             var minutes=Math.Max(0,(int)(end-start).TotalMinutes);
-            var estimate=Convert.ToDecimal(reader.GetDouble(6))*minutes/60m;
-            result.Add(new(reader.GetInt32(0),reader.GetString(1),reader.GetString(2),reader.GetString(3),start,end,minutes,estimate,reader.GetInt32(7)));
+            var hourlyRate=Convert.ToDecimal(reader.GetDouble(6));
+            var chargeAmount=reader.IsDBNull(7) ? CalculateCharge(start,end,hourlyRate) : Convert.ToDecimal(reader.GetDouble(7));
+            result.Add(new(reader.GetInt32(0),reader.GetString(1),reader.GetString(2),reader.GetString(3),start,end,minutes,chargeAmount,reader.GetInt32(8)));
         }
         return result;
+    }
+
+    public decimal GetAccruedAmountForDate(DateTime date)
+    {
+        using var db=Open(); using var cmd=db.CreateCommand();
+        cmd.CommandText="SELECT s.StartedAt,s.EndedAt,t.PricePerHour,s.ChargeAmount FROM Sessions s JOIN Tariffs t ON t.Id=s.TariffId WHERE s.EndedAt IS NOT NULL AND substr(s.EndedAt,1,10)=$day;";
+        cmd.Parameters.AddWithValue("$day",date.ToString("yyyy-MM-dd",CultureInfo.InvariantCulture));
+        using var reader=cmd.ExecuteReader(); var total=0m;
+        while(reader.Read())
+        {
+            var start=DateTime.Parse(reader.GetString(0)); var end=DateTime.Parse(reader.GetString(1));
+            var hourlyRate=Convert.ToDecimal(reader.GetDouble(2));
+            total+=reader.IsDBNull(3) ? CalculateCharge(start,end,hourlyRate) : Convert.ToDecimal(reader.GetDouble(3));
+        }
+        return total;
     }
 
     public IReadOnlyList<ClubNotification> GetNotifications()

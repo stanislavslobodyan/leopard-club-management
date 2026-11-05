@@ -1,3 +1,5 @@
+using System.Globalization;
+
 namespace LEOPARD.Models;
 
 public sealed record ClubSession(
@@ -80,12 +82,12 @@ public sealed record HistorySessionCard(
     DateTime StartedAt,
     DateTime EndedAt,
     int DurationMinutes,
-    decimal EstimatedAmount,
+    decimal AccruedAmount,
     int PointsAwarded)
 {
     public string PeriodText => $"{StartedAt:dd.MM.yyyy HH:mm} — {EndedAt:HH:mm}";
     public string DurationText => $"{DurationMinutes / 60} год {DurationMinutes % 60:00} хв";
-    public string AmountText => $"≈ {EstimatedAmount:0.00} ₴";
+    public string AmountText => $"{AccruedAmount.ToString("0.00", CultureInfo.GetCultureInfo("uk-UA"))} ₴";
     public string PointsText => $"+{PointsAwarded} балів";
 }
 

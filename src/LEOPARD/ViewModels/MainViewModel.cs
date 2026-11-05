@@ -19,6 +19,8 @@ public partial class MainViewModel : ViewModelBase
     private bool _returnToStartAfterClient;
     private readonly HashSet<(int SessionId, string Kind)> _checkedAlerts = [];
     private DateTime _lastAgentPoll = DateTime.MinValue;
+    private DateTime _accrualDate = DateTime.Today;
+    private decimal _todayAccruedAmount;
     private bool _agentPollRunning;
 
     public MainViewModel()
@@ -29,6 +31,8 @@ public partial class MainViewModel : ViewModelBase
         _clock.Tick += (_, _) =>
         {
             var now = DateTime.Now;
+            if (DateTime.Today != _accrualDate)
+                RefreshAccruedAmount();
             foreach (var session in ActiveSessions)
                 session.UpdateTime(now);
             CheckSessionAlerts(now);
@@ -71,7 +75,7 @@ public partial class MainViewModel : ViewModelBase
     public bool HasNotifications => Notifications.Count > 0;
     public bool HasHistory => HistorySessions.Count > 0;
     public bool HasNoHistory => HistorySessions.Count == 0;
-    public string TodayEstimatedRevenue => HistorySessions.Where(s => s.EndedAt.Date == DateTime.Today).Sum(s => s.EstimatedAmount).ToString("0.00") + " ₴";
+    public string TodayAccruedAmount => _todayAccruedAmount.ToString("0.00", CultureInfo.GetCultureInfo("uk-UA")) + " ₴";
     public bool HasNoSessions => ActiveSessions.Count == 0;
     public bool HasNoClients => VisibleClients.Count == 0;
     public bool HasNoComputers => Computers.Count == 0;
@@ -95,7 +99,7 @@ public partial class MainViewModel : ViewModelBase
         : $"{SelectedComputer.Processor}  ·  {SelectedComputer.GraphicsCard}  ·  {SelectedComputer.Memory}  ·  {SelectedComputer.Monitor}  ·  {SelectedComputer.Storage}";
     public string EstimatedCostText => SelectedTariff is null || SelectedDuration is null
         ? "Оберіть тариф і тривалість"
-        : $"Орієнтовно {SelectedTariff.PricePerHour * SelectedDuration.Minutes / 60m:0.00} ₴";
+        : $"Орієнтовно {(SelectedTariff.PricePerHour * SelectedDuration.Minutes / 60m).ToString("0.00", CultureInfo.GetCultureInfo("uk-UA"))} ₴";
     public GridLength SidebarColumnWidth => IsCompact ? new GridLength(0) : new GridLength(232);
     public Thickness ContentMargin => IsCompact
         ? new Thickness(14, 16, 14, 24)
@@ -263,6 +267,7 @@ public partial class MainViewModel : ViewModelBase
         Tariffs.ReplaceWith(_repository.GetTariffs());
         _sessionCache = _repository.GetActiveSessions();
         HistorySessions.ReplaceWith(_repository.GetCompletedSessions());
+        RefreshAccruedAmount();
         Notifications.ReplaceWith(_repository.GetNotifications());
         ApplySessionFilter();
         OnPropertyChanged(nameof(ActiveCount));
@@ -274,9 +279,15 @@ public partial class MainViewModel : ViewModelBase
         OnPropertyChanged(nameof(HasNoReservations));
         OnPropertyChanged(nameof(HasHistory));
         OnPropertyChanged(nameof(HasNoHistory));
-        OnPropertyChanged(nameof(TodayEstimatedRevenue));
         OnPropertyChanged(nameof(UnreadNotificationCount));
         OnPropertyChanged(nameof(HasNotifications));
+    }
+
+    private void RefreshAccruedAmount()
+    {
+        _accrualDate = DateTime.Today;
+        _todayAccruedAmount = _repository.GetAccruedAmountForDate(_accrualDate);
+        OnPropertyChanged(nameof(TodayAccruedAmount));
     }
 
     private void ApplyClientFilter()
@@ -327,8 +338,10 @@ public partial class MainViewModel : ViewModelBase
 
     private void EndSession(int id)
     {
-        _repository.EndSession(id);
-        StatusMessage = "Сеанс завершено. Комп’ютер тепер доступний.";
+        var amount = _repository.EndSession(id);
+        StatusMessage = amount is null
+            ? "Сеанс уже завершено або його не знайдено."
+            : $"Сеанс завершено. Нараховано за тарифом {amount.Value.ToString("0.00", CultureInfo.GetCultureInfo("uk-UA"))} ₴; оплату не фіксували.";
         Refresh();
     }
 
