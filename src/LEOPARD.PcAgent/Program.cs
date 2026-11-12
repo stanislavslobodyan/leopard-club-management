@@ -2,6 +2,7 @@ using System.Net;
 using System.Net.Sockets;
 using System.Text;
 using System.Text.Json;
+using System.Security.Cryptography;
 
 const int defaultPort = 47831;
 const int maxConcurrentRequests = 16;
@@ -21,10 +22,12 @@ Console.CancelKeyPress += (_, eventArgs) =>
 };
 
 var listener = new TcpListener(IPAddress.Any, port);
+var configuredKey = Environment.GetEnvironmentVariable("LEOPARD_AGENT_KEY")?.Trim() ?? "";
 var concurrency = new SemaphoreSlim(maxConcurrentRequests, maxConcurrentRequests);
 listener.Start();
 Console.WriteLine($"LEOPARD PC Agent {typeof(Program).Assembly.GetName().Version} is listening on TCP {port}.");
 Console.WriteLine("Health endpoint: GET /api/v1/health. Press Ctrl+C to stop.");
+Console.WriteLine(string.IsNullOrEmpty(configuredKey) ? "Connection key: not configured." : "Connection key: enabled via LEOPARD_AGENT_KEY.");
 
 try
 {
@@ -38,7 +41,7 @@ try
             concurrency.Release();
             throw;
         }
-        _ = HandleClientAsync(client, concurrency, shutdown.Token);
+        _ = HandleClientAsync(client, concurrency, configuredKey, shutdown.Token);
     }
 }
 catch (OperationCanceledException) { }
@@ -50,7 +53,7 @@ finally
 
 return 0;
 
-static async Task HandleClientAsync(TcpClient client, SemaphoreSlim concurrency, CancellationToken shutdown)
+static async Task HandleClientAsync(TcpClient client, SemaphoreSlim concurrency, string configuredKey, CancellationToken shutdown)
 {
     using (client)
     using (var requestTimeout = CancellationTokenSource.CreateLinkedTokenSource(shutdown))
@@ -73,6 +76,26 @@ static async Task HandleClientAsync(TcpClient client, SemaphoreSlim concurrency,
 
             var method = parts[0];
             var path = parts[1].Split('?', 2)[0];
+            string? suppliedKey = null;
+            string? headerLine;
+            while (!string.IsNullOrEmpty(headerLine = await reader.ReadLineAsync(requestTimeout.Token)))
+            {
+                var separator = headerLine.IndexOf(':');
+                if (separator > 0 && headerLine[..separator].Trim().Equals("X-Leopard-Agent-Key", StringComparison.OrdinalIgnoreCase))
+                    suppliedKey = headerLine[(separator + 1)..].Trim();
+            }
+
+            if (configuredKey.Length > 0 || !string.IsNullOrWhiteSpace(suppliedKey))
+            {
+                var expected = Encoding.UTF8.GetBytes(configuredKey);
+                var supplied = Encoding.UTF8.GetBytes(suppliedKey ?? "");
+                if (expected.Length != supplied.Length || !CryptographicOperations.FixedTimeEquals(expected, supplied))
+                {
+                    await WriteResponseAsync(stream, 401, "Unauthorized", "text/plain", "Unauthorized", requestTimeout.Token);
+                    return;
+                }
+            }
+
             if (!method.Equals("GET", StringComparison.OrdinalIgnoreCase))
             {
                 await WriteResponseAsync(stream, 405, "Method Not Allowed", "text/plain", "Method Not Allowed", requestTimeout.Token);

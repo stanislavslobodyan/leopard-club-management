@@ -19,11 +19,13 @@ public partial class SessionCardViewModel : ObservableObject
     }
 
     public string ComputerLabel => _session.ComputerLabel;
+    public string SessionTitleText => $"{_session.ComputerLabel} · {_session.Game}";
     public string ClientName => _session.ClientName;
     public string Game => _session.Game;
     public string TariffName => _session.TariffName;
     public string TariffRateText => $"{_session.HourlyRate:0} ₴ / год";
     public string StartedAtText => _session.StartedAt.ToString("HH:mm");
+    public string ScheduleText => $"{_session.StartedAt:HH:mm}–{_session.PlannedEnd:HH:mm} · {FormatDuration(_session.PlannedEnd - _session.StartedAt)}";
     public string DurationText => FormatDuration(_now - _session.StartedAt);
     public string AccruedText => (_session.HourlyRate * (decimal)Math.Max(0, (_now - _session.StartedAt).TotalHours))
         .ToString("0.00", System.Globalization.CultureInfo.GetCultureInfo("uk-UA")) + " ₴";

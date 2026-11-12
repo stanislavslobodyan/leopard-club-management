@@ -6,5 +6,5 @@ LEOPARD — програма керування комп’ютерним клу
 
 Там є команди запуску в CMD і розгортання на другому ПК, посібник адміністратора, формула нарахування вартості, вимоги, MVC/MVVM, діаграма класів, дизайн, PC Agent і відомі обмеження.
 
-Код: [приватний репозиторій на GitHub](https://github.com/stanislavslobodyan/leopard-club-management).
+Код: [репозиторій LEOPARD на GitHub](https://github.com/stanislavslobodyan/leopard-club-management).
 

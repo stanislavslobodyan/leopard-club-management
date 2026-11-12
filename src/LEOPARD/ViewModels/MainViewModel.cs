@@ -18,9 +18,10 @@ public partial class MainViewModel : ViewModelBase
     private IReadOnlyList<ClubSession> _sessionCache = [];
     private bool _returnToStartAfterClient;
     private readonly HashSet<(int SessionId, string Kind)> _checkedAlerts = [];
-    private DateTime _lastAgentPoll = DateTime.MinValue;
+    private readonly Dictionary<int, DateTime> _agentLastPolls = [];
     private DateTime _accrualDate = DateTime.Today;
     private decimal _todayAccruedAmount;
+    private int _visitsThisMonth;
     private bool _agentPollRunning;
 
     public MainViewModel()
@@ -36,9 +37,9 @@ public partial class MainViewModel : ViewModelBase
             foreach (var session in ActiveSessions)
                 session.UpdateTime(now);
             CheckSessionAlerts(now);
-            if (now - _lastAgentPoll >= TimeSpan.FromSeconds(20))
+            if (Computers.Any(c => !string.IsNullOrWhiteSpace(c.AgentEndpoint) &&
+                now - _agentLastPolls.GetValueOrDefault(c.Id, DateTime.MinValue) >= TimeSpan.FromSeconds(Math.Clamp(c.AgentPollSeconds, 5, 300))))
             {
-                _lastAgentPoll = now;
                 _ = RefreshAgentStatusesAsync();
             }
             if (SelectedFilter is "Менше 15 хв" or "Потрібна увага")
@@ -51,6 +52,8 @@ public partial class MainViewModel : ViewModelBase
             OnPropertyChanged(nameof(OverdueSessionCount));
             OnPropertyChanged(nameof(HasUrgentSessions));
             OnPropertyChanged(nameof(SessionAttentionText));
+            OnPropertyChanged(nameof(SessionStartTimeText));
+            OnPropertyChanged(nameof(SessionEndTimeText));
             RefreshHourlyOccupancy();
         };
         _clock.Start();
@@ -73,10 +76,13 @@ public partial class MainViewModel : ViewModelBase
     public ObservableCollection<DurationChoice> DurationOptions { get; } =
         [new(15, "15 хвилин"), new(30, "30 хвилин"), new(60, "1 година"), new(90, "1 год 30 хв"),
          new(120, "2 години"), new(180, "3 години")];
+    public ObservableCollection<string> TariffAvailabilityOptions { get; } =
+        ["Увесь день · усі комп’ютери", "Денний час · усі комп’ютери", "Увесь день · основна зала"];
+    public ObservableCollection<string> ZoneOptions { get; } = ["Стандарт · Ряд А", "Стандарт · Ряд B", "VIP"];
 
     public string CurrentTimeText => DateTime.Now.ToString("HH:mm");
     public string CurrentDateText => DateTime.Now.ToString("d MMMM yyyy", CultureInfo.GetCultureInfo("uk-UA"));
-    public string CurrentClubText => "Клуб · основна зала";
+    public string CurrentClubText => $"Київ · Поділ · {DateTime.Now.ToString("d MMMM", CultureInfo.GetCultureInfo("uk-UA"))}";
     public int ActiveCount => _sessionCache.Count;
     public int ActiveRunningCount => _sessionCache.Count(s => s.PlannedEnd > DateTime.Now);
     public int SessionsUnder15Count => _sessionCache.Count(s =>
@@ -84,6 +90,11 @@ public partial class MainViewModel : ViewModelBase
     public int OverdueSessionCount => _sessionCache.Count(s => s.PlannedEnd <= DateTime.Now);
     public int FreeCount => Computers.Count(c => c.Status == "Вільний");
     public int ReservedCount => Computers.Count(c => c.Status == "Заброньований");
+    public int OfflineCount => Computers.Count(c => c.AgentStatus == "Offline");
+    public GridLength ActiveSegmentWidth => new(ActiveCount, GridUnitType.Star);
+    public GridLength FreeSegmentWidth => new(FreeCount, GridUnitType.Star);
+    public GridLength ReservedSegmentWidth => new(ReservedCount, GridUnitType.Star);
+    public GridLength OfflineSegmentWidth => new(OfflineCount, GridUnitType.Star);
     public int ComputerCount => Computers.Count;
     public int ResponsiveCardColumns => IsCompact ? 1 : 4;
     public int ResponsiveMetricColumns => IsCompact ? 2 : 4;
@@ -99,10 +110,32 @@ public partial class MainViewModel : ViewModelBase
         .ToString("0.00", CultureInfo.GetCultureInfo("uk-UA")) + " ₴";
     public int ActiveClientCount => _sessionCache.Select(s => s.ClientName).Distinct(StringComparer.OrdinalIgnoreCase).Count();
     public int TotalVisits => Clients.Sum(c => c.Visits);
+    public int NewClientsThisMonth => Clients.Count(c => c.CreatedAt.Year == DateTime.Today.Year && c.CreatedAt.Month == DateTime.Today.Month);
+    public int VisitsThisMonth => _visitsThisMonth;
+    public string TotalClientBalance => Clients.Sum(c => c.AccountBalance).ToString("N0", CultureInfo.GetCultureInfo("uk-UA")) + " ₴";
     public int TotalLoyaltyPoints => Clients.Sum(c => c.LoyaltyPoints);
     public int HistoryTodayCount => HistorySessions.Count(s => s.EndedAt.Date == DateTime.Today);
     public string HistoryHoursToday => FormatHours(HistorySessions.Where(s => s.EndedAt.Date == DateTime.Today).Sum(s => s.DurationMinutes)) + " год";
     public ReservationCard? NextReservation => Reservations.Where(r => r.StartsAt >= DateTime.Now).OrderBy(r => r.StartsAt).FirstOrDefault();
+    public IReadOnlyList<ReservationCard> ReservationsForSelectedDay => Reservations.Where(r => r.StartsAt.Date == SelectedBookingDate.Date).OrderBy(r => r.StartsAt).ToList();
+    public string SelectedBookingDateText => SelectedBookingDate.ToString("d MMMM yyyy", CultureInfo.GetCultureInfo("uk-UA"));
+    public int SelectedDayReservationCount => ReservationsForSelectedDay.Count;
+    public bool HasNoReservationsForSelectedDay => ReservationsForSelectedDay.Count == 0;
+    public string ReservationEndTimeText => TimeSpan.TryParseExact(NewReservationTime.Trim(), @"hh\:mm", CultureInfo.InvariantCulture, out var start) && SelectedReservationDuration is not null
+        ? start.Add(TimeSpan.FromMinutes(SelectedReservationDuration.Minutes)).ToString(@"hh\:mm") : "—";
+    public string SessionStartTimeText => DateTime.Now.ToString("HH:mm");
+    public string SessionEndTimeText => SelectedDuration is null ? "—" : DateTime.Now.AddMinutes(SelectedDuration.Minutes).ToString("HH:mm");
+    public string TariffPackageDescription => $"{NewTariffPrice} ₴ за {NewTariffDurationMinutes} хв · нарахування за використаний час";
+    public string TariffHourlyEquivalentText
+    {
+        get
+        {
+            if (!int.TryParse(NewTariffDurationMinutes, out var minutes) || minutes <= 0 ||
+                !decimal.TryParse(NewTariffPrice.Replace(',', '.'), NumberStyles.Number, CultureInfo.InvariantCulture, out var price) || price <= 0)
+                return "Вкажіть тривалість і вартість";
+            return $"{(price * 60m / minutes).ToString("0.00", CultureInfo.GetCultureInfo("uk-UA"))} ₴";
+        }
+    }
     public bool HasUpcomingReservation => NextReservation is not null;
     public bool HasNoUpcomingReservation => NextReservation is null;
     public bool HasUrgentSessions => _sessionCache.Any(s => s.PlannedEnd - DateTime.Now <= TimeSpan.FromMinutes(30));
@@ -124,6 +157,7 @@ public partial class MainViewModel : ViewModelBase
     public string AgentSummaryText => ConfiguredAgentCount == 0
         ? "PC-агенти не налаштовані"
         : $"{OnlineAgentCount} / {ConfiguredAgentCount} агентів онлайн";
+    public string AgentStatusColor => AgentStatusText == "Підключено" ? "#9FE2B2" : "#FFB454";
     public string AgentDetailText => ConfiguredAgentCount == 0
         ? "Стан ПК доступний після налаштування агента"
         : $"Перевірено ПК: {ComputerCount}";
@@ -145,8 +179,10 @@ public partial class MainViewModel : ViewModelBase
         get
         {
             var digits = new string(NewClientPhone.Where(char.IsDigit).ToArray());
-            return NewClientName.Trim().Length >= 2 && digits.Length is >= 7 and <= 15 &&
-                   !string.IsNullOrWhiteSpace(NewClientFavoriteGame);
+            var balanceValid = string.IsNullOrWhiteSpace(NewClientBalance) ||
+                decimal.TryParse(NewClientBalance.Replace(',', '.'), NumberStyles.Number, CultureInfo.InvariantCulture, out var balance) && balance >= 0;
+            var emailValid = string.IsNullOrWhiteSpace(NewClientEmail) || NewClientEmail.Contains('@', StringComparison.Ordinal);
+            return NewClientName.Trim().Length >= 2 && digits.Length is >= 7 and <= 15 && balanceValid && emailValid;
         }
     }
     public bool CanConfirmStart => SelectedComputer is not null && SelectedClient is not null &&
@@ -285,6 +321,18 @@ public partial class MainViewModel : ViewModelBase
     private string newClientPhone = "";
 
     [ObservableProperty]
+    private string newClientEmail = "";
+
+    [ObservableProperty]
+    private DateTimeOffset? newClientBirthDate;
+
+    [ObservableProperty]
+    private string newClientBalance = "0";
+
+    [ObservableProperty]
+    private string newClientNote = "";
+
+    [ObservableProperty]
     private string newClientFavoriteGame = "Counter-Strike 2";
 
     [ObservableProperty]
@@ -295,7 +343,8 @@ public partial class MainViewModel : ViewModelBase
 
     [ObservableProperty] private bool isComputerDialogOpen;
     [ObservableProperty] private string newComputerLabel = "";
-    [ObservableProperty] private string newComputerZone = "Основна зала";
+    [ObservableProperty] private string newComputerZone = "Стандарт · Ряд А";
+    [ObservableProperty] private string newComputerNetworkName = "";
     [ObservableProperty] private string newComputerProcessor = "";
     [ObservableProperty] private string newComputerGraphicsCard = "";
     [ObservableProperty] private string newComputerMemory = "";
@@ -306,12 +355,20 @@ public partial class MainViewModel : ViewModelBase
 
     [ObservableProperty] private bool isAgentDialogOpen;
     [ObservableProperty] private ComputerCard? selectedAgentComputer;
-    [ObservableProperty] private string editAgentEndpoint = "";
+    [ObservableProperty] private string editAgentAddress = "";
+    [ObservableProperty] private string editAgentPort = "47831";
+    [ObservableProperty] private string editAgentClubServer = "";
+    [ObservableProperty] private string editAgentConnectionKey = "";
+    [ObservableProperty] private string editAgentPollSeconds = "15";
+    [ObservableProperty] private string agentStatusText = "Не підключено";
+    [ObservableProperty] private string agentLastCheckText = "Поки не перевірено";
 
     [ObservableProperty] private bool isTariffDialogOpen;
     [ObservableProperty] private string newTariffName = "";
     [ObservableProperty] private string newTariffDescription = "";
     [ObservableProperty] private string newTariffPrice = "";
+    [ObservableProperty] private string newTariffDurationMinutes = "60";
+    [ObservableProperty] private string newTariffAvailability = "Увесь день · усі комп’ютери";
     [ObservableProperty] private string newTariffBadge = "";
     [ObservableProperty] private string tariffFormError = "";
 
@@ -320,7 +377,10 @@ public partial class MainViewModel : ViewModelBase
     [ObservableProperty] private ClientCard? selectedReservationClient;
     [ObservableProperty] private DateTimeOffset? newReservationDate = DateTimeOffset.Now.AddDays(1);
     [ObservableProperty] private string newReservationTime = "18:00";
+    [ObservableProperty] private string newReservationNote = "";
+    [ObservableProperty] private int? editingReservationId;
     [ObservableProperty] private DurationChoice? selectedReservationDuration;
+    [ObservableProperty] private DateTime selectedBookingDate = DateTime.Today;
     [ObservableProperty] private string reservationFormError = "";
 
     partial void OnFilterTextChanged(string value) => ApplySessionFilter();
@@ -331,7 +391,12 @@ public partial class MainViewModel : ViewModelBase
         OnPropertyChanged(nameof(CanConfirmStart));
         OnPropertyChanged(nameof(SelectedComputerSpecText));
     }
-    partial void OnSelectedClientChanged(ClientCard? value) => OnPropertyChanged(nameof(CanConfirmStart));
+    partial void OnSelectedClientChanged(ClientCard? value)
+    {
+        if (value is not null && !string.IsNullOrWhiteSpace(value.FavoriteGame))
+            SelectedGame = value.FavoriteGame;
+        OnPropertyChanged(nameof(CanConfirmStart));
+    }
     partial void OnSelectedTariffChanged(TariffCard? value)
     {
         OnPropertyChanged(nameof(CanConfirmStart));
@@ -341,6 +406,7 @@ public partial class MainViewModel : ViewModelBase
     {
         OnPropertyChanged(nameof(CanConfirmStart));
         OnPropertyChanged(nameof(EstimatedCostText));
+        OnPropertyChanged(nameof(SessionEndTimeText));
     }
     partial void OnSelectedGameChanged(string value) => OnPropertyChanged(nameof(CanConfirmStart));
     partial void OnNewClientNameChanged(string value) => OnClientFormValueChanged();
@@ -351,7 +417,44 @@ public partial class MainViewModel : ViewModelBase
     partial void OnNewComputerLabelChanged(string value) => ComputerFormError = "";
     partial void OnNewComputerZoneChanged(string value) => ComputerFormError = "";
     partial void OnNewTariffNameChanged(string value) => TariffFormError = "";
-    partial void OnNewTariffPriceChanged(string value) => TariffFormError = "";
+    partial void OnNewTariffPriceChanged(string value) { TariffFormError = ""; OnPropertyChanged(nameof(TariffHourlyEquivalentText)); OnPropertyChanged(nameof(TariffPackageDescription)); }
+    partial void OnNewTariffDurationMinutesChanged(string value) { TariffFormError = ""; OnPropertyChanged(nameof(TariffHourlyEquivalentText)); OnPropertyChanged(nameof(TariffPackageDescription)); }
+    partial void OnSelectedReservationDurationChanged(DurationChoice? value) => OnReservationFormChanged();
+    partial void OnNewReservationTimeChanged(string value) => OnReservationFormChanged();
+    partial void OnNewReservationDateChanged(DateTimeOffset? value) => OnReservationFormChanged();
+    partial void OnSelectedReservationComputerChanged(ComputerCard? value) => OnReservationFormChanged();
+    partial void OnSelectedReservationClientChanged(ClientCard? value) => OnReservationFormChanged();
+    partial void OnEditingReservationIdChanged(int? value)
+    {
+        OnPropertyChanged(nameof(ReservationDialogTitle));
+        OnPropertyChanged(nameof(ReservationDialogAction));
+    }
+    partial void OnSelectedBookingDateChanged(DateTime value)
+    {
+        OnPropertyChanged(nameof(SelectedBookingDateText));
+        OnPropertyChanged(nameof(ReservationsForSelectedDay));
+        OnPropertyChanged(nameof(SelectedDayReservationCount));
+        OnPropertyChanged(nameof(HasNoReservationsForSelectedDay));
+    }
+    partial void OnNewClientEmailChanged(string value) => OnClientFormValueChanged();
+    partial void OnNewClientBalanceChanged(string value) => OnClientFormValueChanged();
+    partial void OnAgentStatusTextChanged(string value) => OnPropertyChanged(nameof(AgentStatusColor));
+
+    private void OnReservationFormChanged()
+    {
+        OnPropertyChanged(nameof(ReservationEndTimeText));
+        OnPropertyChanged(nameof(CanSaveReservation));
+        OnPropertyChanged(nameof(ReservationAvailabilityText));
+    }
+
+    public bool CanSaveReservation => SelectedReservationComputer is not null && SelectedReservationClient is not null &&
+        NewReservationDate is not null && SelectedReservationDuration is not null &&
+        TimeSpan.TryParseExact(NewReservationTime.Trim(), @"hh\:mm", CultureInfo.InvariantCulture, out _);
+    public string ReservationDialogTitle => EditingReservationId is null ? "Нове бронювання" : "Змінити бронювання";
+    public string ReservationDialogAction => EditingReservationId is null ? "Створити" : "Зберегти зміни";
+    public string ReservationAvailabilityText => SelectedReservationComputer is null || NewReservationDate is null
+        ? "Оберіть ПК, дату та час бронювання."
+        : $"{SelectedReservationComputer.ComputerLabel} · слот {NewReservationTime}–{ReservationEndTimeText}. Бронювання не запускає сеанс і не створює нарахування.";
 
     private void OnClientFormValueChanged()
     {
@@ -370,7 +473,14 @@ public partial class MainViewModel : ViewModelBase
         Computers.ReplaceWith(_repository.GetComputers());
         AvailableComputers.ReplaceWith(Computers.Where(c => c.Status == "Вільний"));
         Reservations.ReplaceWith(_repository.GetReservations());
+        OnPropertyChanged(nameof(ReservationsForSelectedDay));
+        OnPropertyChanged(nameof(SelectedDayReservationCount));
+        OnPropertyChanged(nameof(HasNoReservationsForSelectedDay));
+        OnPropertyChanged(nameof(NextReservation));
+        OnPropertyChanged(nameof(HasUpcomingReservation));
+        OnPropertyChanged(nameof(HasNoUpcomingReservation));
         Clients.ReplaceWith(_repository.GetClients());
+        _visitsThisMonth = _repository.GetVisitsForMonth(DateTime.Today);
         ApplyClientFilter();
         Tariffs.ReplaceWith(_repository.GetTariffs());
         _sessionCache = _repository.GetActiveSessions();
@@ -383,6 +493,11 @@ public partial class MainViewModel : ViewModelBase
         OnPropertyChanged(nameof(ActiveCount));
         OnPropertyChanged(nameof(FreeCount));
         OnPropertyChanged(nameof(ReservedCount));
+        OnPropertyChanged(nameof(OfflineCount));
+        OnPropertyChanged(nameof(ActiveSegmentWidth));
+        OnPropertyChanged(nameof(FreeSegmentWidth));
+        OnPropertyChanged(nameof(ReservedSegmentWidth));
+        OnPropertyChanged(nameof(OfflineSegmentWidth));
         OnPropertyChanged(nameof(ComputerCount));
         OnPropertyChanged(nameof(HasNoComputers));
         OnPropertyChanged(nameof(HasNoTariffs));
@@ -397,6 +512,9 @@ public partial class MainViewModel : ViewModelBase
         OnPropertyChanged(nameof(ActiveAccruedAmount));
         OnPropertyChanged(nameof(ActiveClientCount));
         OnPropertyChanged(nameof(TotalVisits));
+        OnPropertyChanged(nameof(NewClientsThisMonth));
+        OnPropertyChanged(nameof(VisitsThisMonth));
+        OnPropertyChanged(nameof(TotalClientBalance));
         OnPropertyChanged(nameof(TotalLoyaltyPoints));
         OnPropertyChanged(nameof(HistoryTodayCount));
         OnPropertyChanged(nameof(HistoryHoursToday));
@@ -553,13 +671,16 @@ public partial class MainViewModel : ViewModelBase
     private async Task RefreshAgentStatusesAsync()
     {
         if (_agentPollRunning) return;
-        var configured = Computers.Where(c => !string.IsNullOrWhiteSpace(c.AgentEndpoint)).ToArray();
+        var now = DateTime.Now;
+        var configured = Computers.Where(c => !string.IsNullOrWhiteSpace(c.AgentEndpoint) &&
+            now - _agentLastPolls.GetValueOrDefault(c.Id, DateTime.MinValue) >= TimeSpan.FromSeconds(Math.Clamp(c.AgentPollSeconds, 5, 300))).ToArray();
         if (configured.Length == 0) return;
         _agentPollRunning = true;
+        foreach (var computer in configured) _agentLastPolls[computer.Id] = now;
         try
         {
             var results = await Task.WhenAll(configured.Select(async computer =>
-                (computer.Id, Status: await _agentClient.IsAvailableAsync(computer.AgentEndpoint))));
+                (computer.Id, Status: await _agentClient.IsAvailableAsync(computer.AgentEndpoint, computer.AgentConnectionKey))));
             foreach (var result in results)
             {
                 var index = -1;
@@ -568,9 +689,19 @@ public partial class MainViewModel : ViewModelBase
                 if (index < 0) continue;
                 var updated = Computers[index] with { AgentStatus = result.Status ? "Online" : "Offline" };
                 Computers[index] = updated;
+                OnPropertyChanged(nameof(OfflineCount));
+                OnPropertyChanged(nameof(OfflineSegmentWidth));
+                if (SelectedAgentComputer?.Id == result.Id)
+                {
+                    AgentStatusText = result.Status ? "Підключено" : "Не підключено";
+                    AgentLastCheckText = $"Остання перевірка: {DateTime.Now:HH:mm}";
+                }
                 for (var i = 0; i < AvailableComputers.Count; i++)
                     if (AvailableComputers[i].Id == result.Id) { AvailableComputers[i] = updated; break; }
             }
+            OnPropertyChanged(nameof(OnlineAgentCount));
+            OnPropertyChanged(nameof(AgentSummaryText));
+            OnPropertyChanged(nameof(AgentDetailText));
         }
         finally { _agentPollRunning = false; }
     }
@@ -585,7 +716,7 @@ public partial class MainViewModel : ViewModelBase
     [RelayCommand]
     private void ShowNewComputerDialog()
     {
-        NewComputerLabel = ""; NewComputerProcessor = ""; NewComputerGraphicsCard = "";
+        NewComputerLabel = ""; NewComputerZone = ZoneOptions.First(); NewComputerNetworkName = ""; NewComputerProcessor = ""; NewComputerGraphicsCard = "";
         NewComputerMemory = ""; NewComputerMonitor = ""; NewComputerStorage = ""; ComputerFormError = "";
         NewComputerAgentEndpoint = "";
         IsComputerDialogOpen = true;
@@ -599,7 +730,7 @@ public partial class MainViewModel : ViewModelBase
             ComputerFormError = "Вкажіть назву робочого місця та зону.";
             return;
         }
-        var id = _repository.AddComputer(NewComputerLabel, NewComputerZone, NewComputerProcessor,
+        var id = _repository.AddComputer(NewComputerLabel, NewComputerZone, NewComputerNetworkName, NewComputerProcessor,
             NewComputerGraphicsCard, NewComputerMemory, NewComputerMonitor, NewComputerStorage, NewComputerAgentEndpoint);
         if (id == 0) { ComputerFormError = "Перевірте назву ПК та адресу агента (http://хост:47831); назва має бути унікальною."; return; }
         IsComputerDialogOpen = false;
@@ -614,7 +745,15 @@ public partial class MainViewModel : ViewModelBase
     {
         SelectedAgentComputer = Computers.FirstOrDefault(c => c.Id == computerId);
         if (SelectedAgentComputer is null) return;
-        EditAgentEndpoint = SelectedAgentComputer.AgentEndpoint;
+        EditAgentAddress = Uri.TryCreate(SelectedAgentComputer.AgentEndpoint, UriKind.Absolute, out var endpointUri)
+            ? endpointUri.Host
+            : SelectedAgentComputer.NetworkName;
+        EditAgentPort = SelectedAgentComputer.AgentPort.ToString(CultureInfo.InvariantCulture);
+        EditAgentClubServer = SelectedAgentComputer.AgentClubServer;
+        EditAgentConnectionKey = SelectedAgentComputer.AgentConnectionKey;
+        EditAgentPollSeconds = SelectedAgentComputer.AgentPollSeconds.ToString(CultureInfo.InvariantCulture);
+        AgentStatusText = SelectedAgentComputer.AgentStatus == "Online" ? "Підключено" : "Не підключено";
+        AgentLastCheckText = "Остання перевірка: —";
         ComputerFormError = "";
         IsAgentDialogOpen = true;
     }
@@ -622,14 +761,16 @@ public partial class MainViewModel : ViewModelBase
     [RelayCommand]
     private void SaveComputerAgentEndpoint()
     {
-        if (SelectedAgentComputer is null || !_repository.UpdateComputerAgentEndpoint(SelectedAgentComputer.Id, EditAgentEndpoint))
+        if (!int.TryParse(EditAgentPort, out var port) || !int.TryParse(EditAgentPollSeconds, out var pollSeconds) ||
+            SelectedAgentComputer is null || !_repository.UpdateComputerAgentConfiguration(SelectedAgentComputer.Id,
+                EditAgentAddress, port, EditAgentClubServer, EditAgentConnectionKey, pollSeconds))
         {
-            ComputerFormError = "Введіть базову адресу http://хост:47831 або https://хост; поле можна залишити порожнім.";
+            ComputerFormError = "Вкажіть адресу ПК, порт 1024–65535 і інтервал 5–300 секунд.";
             return;
         }
         IsAgentDialogOpen = false;
         Refresh();
-        _lastAgentPoll = DateTime.MinValue;
+        _agentLastPolls.Remove(SelectedAgentComputer.Id);
         StatusMessage = $"Налаштування агента для {SelectedAgentComputer.ComputerLabel} оновлено.";
     }
 
@@ -638,19 +779,21 @@ public partial class MainViewModel : ViewModelBase
     [RelayCommand]
     private void ShowNewTariffDialog()
     {
-        NewTariffName = ""; NewTariffDescription = ""; NewTariffPrice = ""; NewTariffBadge = ""; TariffFormError = "";
+        NewTariffName = ""; NewTariffDescription = ""; NewTariffPrice = ""; NewTariffDurationMinutes = "60";
+        NewTariffAvailability = TariffAvailabilityOptions.First(); NewTariffBadge = ""; TariffFormError = "";
         IsTariffDialogOpen = true;
     }
 
     [RelayCommand]
     private void SaveNewTariff()
     {
-        if (!decimal.TryParse(NewTariffPrice.Replace(',', '.'), NumberStyles.Number, CultureInfo.InvariantCulture, out var price) || price <= 0)
+        if (!int.TryParse(NewTariffDurationMinutes, out var durationMinutes) || durationMinutes <= 0 ||
+            !decimal.TryParse(NewTariffPrice.Replace(',', '.'), NumberStyles.Number, CultureInfo.InvariantCulture, out var price) || price <= 0)
         {
-            TariffFormError = "Вкажіть ціну за годину, більшу за нуль.";
+            TariffFormError = "Вкажіть тривалість у хвилинах і вартість пакета, більшу за нуль.";
             return;
         }
-        var id = _repository.AddTariff(NewTariffName, NewTariffDescription, price, NewTariffBadge);
+        var id = _repository.AddTariff(NewTariffName, NewTariffDescription, durationMinutes, price, NewTariffAvailability, NewTariffBadge);
         if (id == 0) { TariffFormError = "Вкажіть назву тарифу; тариф із такою назвою вже існує."; return; }
         IsTariffDialogOpen = false;
         Refresh();
@@ -671,6 +814,8 @@ public partial class MainViewModel : ViewModelBase
         SelectedReservationClient = Clients.FirstOrDefault();
         NewReservationDate = DateTimeOffset.Now.AddDays(1);
         NewReservationTime = "18:00";
+        NewReservationNote = "";
+        EditingReservationId = null;
         SelectedReservationDuration = DurationOptions.FirstOrDefault(d => d.Minutes == 120);
         ReservationFormError = "";
         IsReservationDialogOpen = true;
@@ -690,17 +835,43 @@ public partial class MainViewModel : ViewModelBase
             return;
         }
         var startsAt = NewReservationDate.Value.Date.Add(time);
-        if (!_repository.AddReservation(SelectedReservationComputer.Id, SelectedReservationClient.Id, startsAt, SelectedReservationDuration.Minutes))
+        var editing = EditingReservationId is not null;
+        if (!_repository.AddReservation(SelectedReservationComputer.Id, SelectedReservationClient.Id, startsAt,
+                SelectedReservationDuration.Minutes, NewReservationNote, EditingReservationId))
         {
             ReservationFormError = "Час минув або слот перетинається із сеансом чи іншим бронюванням.";
             return;
         }
         IsReservationDialogOpen = false;
         Refresh();
-        StatusMessage = $"Бронювання для {SelectedReservationClient.Name} створено.";
+        StatusMessage = editing ? "Бронювання оновлено." : $"Бронювання для {SelectedReservationClient.Name} створено.";
+        EditingReservationId = null;
     }
 
-    [RelayCommand] private void CancelNewReservationDialog() => IsReservationDialogOpen = false;
+    [RelayCommand] private void CancelNewReservationDialog() { IsReservationDialogOpen = false; EditingReservationId = null; }
+
+    [RelayCommand]
+    private void EditReservation(int id)
+    {
+        var reservation = Reservations.FirstOrDefault(r => r.Id == id);
+        if (reservation is null) return;
+        var computer = Computers.FirstOrDefault(c => c.ComputerLabel == reservation.ComputerLabel);
+        var client = Clients.FirstOrDefault(c => c.Name == reservation.ClientName);
+        if (computer is null || client is null) return;
+        SelectedReservationComputer = computer;
+        SelectedReservationClient = client;
+        NewReservationDate = reservation.StartsAt;
+        NewReservationTime = reservation.StartsAt.ToString("HH:mm");
+        SelectedReservationDuration = DurationOptions.FirstOrDefault(d => d.Minutes == reservation.DurationMinutes)
+                                     ?? new DurationChoice(reservation.DurationMinutes, $"{reservation.DurationMinutes} хв");
+        NewReservationNote = reservation.Note;
+        EditingReservationId = reservation.Id;
+        ReservationFormError = "";
+        IsReservationDialogOpen = true;
+    }
+
+    [RelayCommand] private void PreviousBookingDay() => SelectedBookingDate = SelectedBookingDate.AddDays(-1);
+    [RelayCommand] private void NextBookingDay() => SelectedBookingDate = SelectedBookingDate.AddDays(1);
 
     [RelayCommand]
     private void CancelReservation(int id)
@@ -770,7 +941,11 @@ public partial class MainViewModel : ViewModelBase
             IsStartDialogOpen = false;
         NewClientName = "";
         NewClientPhone = "";
-        NewClientFavoriteGame = GameOptions.FirstOrDefault() ?? "Інша гра";
+        NewClientEmail = "";
+        NewClientBirthDate = null;
+        NewClientBalance = "0";
+        NewClientNote = "";
+        NewClientFavoriteGame = "Інша гра";
         NewClientErrorMessage = "";
         IsNewClientDialogOpen = true;
     }
@@ -780,11 +955,13 @@ public partial class MainViewModel : ViewModelBase
     {
         if (!CanSaveClient)
         {
-            NewClientErrorMessage = "Вкажіть ім’я, телефон (7–15 цифр) і улюблену гру.";
+            NewClientErrorMessage = "Перевірте ім’я, телефон, формат електронної пошти та початковий баланс.";
             return;
         }
 
-        var id = _repository.AddClient(NewClientName, NewClientPhone, NewClientFavoriteGame);
+        decimal.TryParse(NewClientBalance.Replace(',', '.'), NumberStyles.Number, CultureInfo.InvariantCulture, out var initialBalance);
+        var id = _repository.AddClient(NewClientName, NewClientPhone, NewClientEmail,
+            NewClientBirthDate?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture), initialBalance, NewClientNote);
         if (id == 0)
         {
             NewClientErrorMessage = "Клієнт із таким номером телефону вже існує.";

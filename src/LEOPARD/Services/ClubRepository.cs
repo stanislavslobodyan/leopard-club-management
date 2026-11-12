@@ -36,11 +36,11 @@ public sealed class ClubRepository
             CREATE TABLE IF NOT EXISTS Computers(
                 Id INTEGER PRIMARY KEY, Label TEXT NOT NULL, Zone TEXT NOT NULL,
                 Processor TEXT NOT NULL DEFAULT '', GraphicsCard TEXT NOT NULL DEFAULT '',
-                Memory TEXT NOT NULL DEFAULT '', Monitor TEXT NOT NULL DEFAULT '', Storage TEXT NOT NULL DEFAULT '');
-            CREATE TABLE IF NOT EXISTS Clients(Id INTEGER PRIMARY KEY, Name TEXT NOT NULL, Phone TEXT NOT NULL, Visits INTEGER NOT NULL DEFAULT 0, FavoriteGame TEXT NOT NULL, LoyaltyPoints INTEGER NOT NULL DEFAULT 0);
-            CREATE TABLE IF NOT EXISTS Tariffs(Id INTEGER PRIMARY KEY, Name TEXT NOT NULL, Description TEXT NOT NULL, PricePerHour REAL NOT NULL, Badge TEXT NOT NULL);
+                Memory TEXT NOT NULL DEFAULT '', Monitor TEXT NOT NULL DEFAULT '', Storage TEXT NOT NULL DEFAULT '', NetworkName TEXT NOT NULL DEFAULT '');
+            CREATE TABLE IF NOT EXISTS Clients(Id INTEGER PRIMARY KEY, Name TEXT NOT NULL, Phone TEXT NOT NULL, Visits INTEGER NOT NULL DEFAULT 0, FavoriteGame TEXT NOT NULL, LoyaltyPoints INTEGER NOT NULL DEFAULT 0, Email TEXT NOT NULL DEFAULT '', BirthDate TEXT NULL, AccountBalance REAL NOT NULL DEFAULT 0, Note TEXT NOT NULL DEFAULT '', CreatedAt TEXT NOT NULL DEFAULT '');
+            CREATE TABLE IF NOT EXISTS Tariffs(Id INTEGER PRIMARY KEY, Name TEXT NOT NULL, Description TEXT NOT NULL, PricePerHour REAL NOT NULL, Badge TEXT NOT NULL, DurationMinutes INTEGER NOT NULL DEFAULT 60, PackagePrice REAL NULL, Availability TEXT NOT NULL DEFAULT 'Увесь день · усі комп’ютери');
             CREATE TABLE IF NOT EXISTS Sessions(Id INTEGER PRIMARY KEY, ComputerId INTEGER NOT NULL REFERENCES Computers, ClientId INTEGER NOT NULL REFERENCES Clients, Game TEXT NOT NULL, TariffId INTEGER NOT NULL REFERENCES Tariffs, StartedAt TEXT NOT NULL, PlannedEnd TEXT NOT NULL, EndedAt TEXT NULL, PointsAwarded INTEGER NOT NULL DEFAULT 0, ChargeAmount REAL NULL);
-            CREATE TABLE IF NOT EXISTS Reservations(Id INTEGER PRIMARY KEY, ComputerId INTEGER NOT NULL REFERENCES Computers, ClientId INTEGER NOT NULL REFERENCES Clients, StartsAt TEXT NOT NULL, DurationMinutes INTEGER NOT NULL, Status TEXT NOT NULL);
+            CREATE TABLE IF NOT EXISTS Reservations(Id INTEGER PRIMARY KEY, ComputerId INTEGER NOT NULL REFERENCES Computers, ClientId INTEGER NOT NULL REFERENCES Clients, StartsAt TEXT NOT NULL, DurationMinutes INTEGER NOT NULL, Status TEXT NOT NULL, Note TEXT NOT NULL DEFAULT '');
             CREATE TABLE IF NOT EXISTS Notifications(Id INTEGER PRIMARY KEY, SessionId INTEGER NOT NULL REFERENCES Sessions, Kind TEXT NOT NULL, Title TEXT NOT NULL, Message TEXT NOT NULL, CreatedAt TEXT NOT NULL, IsRead INTEGER NOT NULL DEFAULT 0, UNIQUE(SessionId,Kind));
             """;
         command.ExecuteNonQuery();
@@ -49,10 +49,36 @@ public sealed class ClubRepository
         EnsureComputerSpecColumn(connection, "Memory");
         EnsureComputerSpecColumn(connection, "Monitor");
         EnsureComputerSpecColumn(connection, "Storage");
+        EnsureColumn(connection, "Computers", "NetworkName", "TEXT NOT NULL DEFAULT ''");
         EnsureColumn(connection, "Clients", "LoyaltyPoints", "INTEGER NOT NULL DEFAULT 0");
+        EnsureColumn(connection, "Clients", "Email", "TEXT NOT NULL DEFAULT ''");
+        EnsureColumn(connection, "Clients", "BirthDate", "TEXT NULL");
+        EnsureColumn(connection, "Clients", "AccountBalance", "REAL NOT NULL DEFAULT 0");
+        EnsureColumn(connection, "Clients", "Note", "TEXT NOT NULL DEFAULT ''");
+        EnsureColumn(connection, "Clients", "CreatedAt", "TEXT NOT NULL DEFAULT ''");
         EnsureColumn(connection, "Sessions", "PointsAwarded", "INTEGER NOT NULL DEFAULT 0");
         EnsureColumn(connection, "Sessions", "ChargeAmount", "REAL NULL");
         EnsureColumn(connection, "Computers", "AgentEndpoint", "TEXT NOT NULL DEFAULT ''");
+        EnsureColumn(connection, "Computers", "AgentClubServer", "TEXT NOT NULL DEFAULT ''");
+        EnsureColumn(connection, "Computers", "AgentPort", "INTEGER NOT NULL DEFAULT 47831");
+        EnsureColumn(connection, "Computers", "AgentConnectionKey", "TEXT NOT NULL DEFAULT ''");
+        EnsureColumn(connection, "Computers", "AgentPollSeconds", "INTEGER NOT NULL DEFAULT 15");
+        EnsureColumn(connection, "Tariffs", "DurationMinutes", "INTEGER NOT NULL DEFAULT 60");
+        EnsureColumn(connection, "Tariffs", "PackagePrice", "REAL NULL");
+        EnsureColumn(connection, "Tariffs", "Availability", "TEXT NOT NULL DEFAULT 'Увесь день · усі комп’ютери'");
+        EnsureColumn(connection, "Reservations", "Note", "TEXT NOT NULL DEFAULT ''");
+        using (var migrate = connection.CreateCommand())
+        {
+            migrate.CommandText = "UPDATE Tariffs SET PackagePrice=PricePerHour WHERE PackagePrice IS NULL OR PackagePrice<=0;";
+            migrate.ExecuteNonQuery();
+        }
+        using (var migrate = connection.CreateCommand())
+        {
+            // Legacy clients do not have a reliable registration date. Keep them out
+            // of the "new this month" metric instead of making them appear newly added.
+            migrate.CommandText = "UPDATE Clients SET CreatedAt='2000-01-01T00:00:00' WHERE CreatedAt='';";
+            migrate.ExecuteNonQuery();
+        }
         using var index = connection.CreateCommand();
         index.CommandText = "CREATE UNIQUE INDEX IF NOT EXISTS IX_Computers_Label ON Computers(Label COLLATE NOCASE); CREATE UNIQUE INDEX IF NOT EXISTS IX_Tariffs_Name ON Tariffs(Name COLLATE NOCASE); CREATE UNIQUE INDEX IF NOT EXISTS IX_Clients_Phone ON Clients(Phone); CREATE INDEX IF NOT EXISTS IX_Sessions_ActiveComputer ON Sessions(ComputerId,EndedAt); CREATE INDEX IF NOT EXISTS IX_Reservations_ComputerStart ON Reservations(ComputerId,StartsAt);";
         index.ExecuteNonQuery();
@@ -216,7 +242,7 @@ public sealed class ClubRepository
     {
         var sessions=GetActiveSessions();
         using var db=Open(); using var cmd=db.CreateCommand();
-        cmd.CommandText="SELECT Id,Label,Zone,Processor,GraphicsCard,Memory,Monitor,Storage,AgentEndpoint FROM Computers ORDER BY Id;";
+        cmd.CommandText="SELECT Id,Label,Zone,Processor,GraphicsCard,Memory,Monitor,Storage,AgentEndpoint,NetworkName,AgentClubServer,AgentPort,AgentConnectionKey,AgentPollSeconds FROM Computers ORDER BY Id;";
         using var reader=cmd.ExecuteReader(); var result=new List<ComputerCard>();
         while(reader.Read())
         {
@@ -225,8 +251,12 @@ public sealed class ClubRepository
             var status = session is not null ? "Активний" : IsReserved(id) ? "Заброньований" : "Вільний";
             var details = session is not null ? $"{session.ClientName} · {session.Game}"
                 : status == "Заброньований" ? "Є майбутнє бронювання" : "Готовий до сеансу";
-            result.Add(new(id,label,zone,status,details,reader.GetString(3),reader.GetString(4),
-                reader.GetString(5),reader.GetString(6),reader.GetString(7),reader.GetString(8),"Unknown"));
+            result.Add(new ComputerCard(id,label,zone,status,details,reader.GetString(3),reader.GetString(4),
+                reader.GetString(5),reader.GetString(6),reader.GetString(7),reader.GetString(8),"Unknown")
+            {
+                NetworkName = reader.GetString(9), AgentClubServer = reader.GetString(10), AgentPort = reader.GetInt32(11),
+                AgentConnectionKey = reader.GetString(12), AgentPollSeconds = reader.GetInt32(13)
+            });
         }
         return result;
     }
@@ -242,26 +272,28 @@ public sealed class ClubRepository
     public IReadOnlyList<ReservationCard> GetReservations()
     {
         using var db=Open(); using var cmd=db.CreateCommand();
-        cmd.CommandText="SELECT r.Id,c.Label,cl.Name,r.StartsAt,r.DurationMinutes,r.Status FROM Reservations r JOIN Computers c ON c.Id=r.ComputerId JOIN Clients cl ON cl.Id=r.ClientId WHERE r.Status<>'Скасовано' ORDER BY r.StartsAt;";
+        cmd.CommandText="SELECT r.Id,c.Label,cl.Name,r.StartsAt,r.DurationMinutes,r.Status,r.Note FROM Reservations r JOIN Computers c ON c.Id=r.ComputerId JOIN Clients cl ON cl.Id=r.ClientId WHERE r.Status<>'Скасовано' ORDER BY r.StartsAt;";
         using var reader=cmd.ExecuteReader(); var list=new List<ReservationCard>();
         while(reader.Read())
         {
             var startsAt = DateTime.Parse(reader.GetString(3));
             var minutes = reader.GetInt32(4);
-            list.Add(new(reader.GetInt32(0),reader.GetString(1),reader.GetString(2),startsAt,minutes,
-                startsAt.ToString("dd.MM · HH:mm"),$"{minutes / 60} год {minutes % 60:00} хв",reader.GetString(5)));
+            list.Add(new ReservationCard(reader.GetInt32(0),reader.GetString(1),reader.GetString(2),startsAt,minutes,
+                startsAt.ToString("dd.MM · HH:mm"),$"{minutes / 60} год {minutes % 60:00} хв",reader.GetString(5))
+                { Note = reader.GetString(6) });
         }
         return list;
     }
 
-    public int AddComputer(string label, string zone, string processor, string graphicsCard, string memory, string monitor, string storage, string agentEndpoint)
+    public int AddComputer(string label, string zone, string networkName, string processor, string graphicsCard, string memory, string monitor, string storage, string agentEndpoint)
     {
         label = label.Trim(); zone = zone.Trim();
         var normalizedAgentEndpoint = NormalizeAgentEndpoint(agentEndpoint);
         if (label.Length < 2 || string.IsNullOrWhiteSpace(zone) || normalizedAgentEndpoint is null) return 0;
         using var db = Open(); using var cmd = db.CreateCommand();
-        cmd.CommandText = "INSERT INTO Computers(Label,Zone,Processor,GraphicsCard,Memory,Monitor,Storage,AgentEndpoint) VALUES($label,$zone,$cpu,$gpu,$ram,$monitor,$storage,$agent); SELECT last_insert_rowid();";
+        cmd.CommandText = "INSERT INTO Computers(Label,Zone,NetworkName,Processor,GraphicsCard,Memory,Monitor,Storage,AgentEndpoint) VALUES($label,$zone,$network,$cpu,$gpu,$ram,$monitor,$storage,$agent); SELECT last_insert_rowid();";
         cmd.Parameters.AddWithValue("$label", label); cmd.Parameters.AddWithValue("$zone", zone);
+        cmd.Parameters.AddWithValue("$network", networkName.Trim());
         cmd.Parameters.AddWithValue("$cpu", processor.Trim()); cmd.Parameters.AddWithValue("$gpu", graphicsCard.Trim());
         cmd.Parameters.AddWithValue("$ram", memory.Trim()); cmd.Parameters.AddWithValue("$monitor", monitor.Trim());
         cmd.Parameters.AddWithValue("$storage", storage.Trim()); cmd.Parameters.AddWithValue("$agent", normalizedAgentEndpoint);
@@ -279,6 +311,21 @@ public sealed class ClubRepository
         return cmd.ExecuteNonQuery()==1;
     }
 
+    public bool UpdateComputerAgentConfiguration(int computerId, string address, int port, string clubServer, string connectionKey, int pollSeconds)
+    {
+        var normalizedAddress = NormalizeAgentEndpoint(address, port);
+        if (normalizedAddress is null || string.IsNullOrWhiteSpace(address) || port is < 1024 or > 65535 || pollSeconds is < 5 or > 300) return false;
+        using var db = Open(); using var cmd = db.CreateCommand();
+        cmd.CommandText = "UPDATE Computers SET AgentEndpoint=$endpoint,AgentPort=$port,AgentClubServer=$server,AgentConnectionKey=$key,AgentPollSeconds=$poll WHERE Id=$id;";
+        cmd.Parameters.AddWithValue("$endpoint", normalizedAddress);
+        cmd.Parameters.AddWithValue("$port", port);
+        cmd.Parameters.AddWithValue("$server", clubServer.Trim());
+        cmd.Parameters.AddWithValue("$key", connectionKey.Trim());
+        cmd.Parameters.AddWithValue("$poll", pollSeconds);
+        cmd.Parameters.AddWithValue("$id", computerId);
+        return cmd.ExecuteNonQuery() == 1;
+    }
+
     private static string? NormalizeAgentEndpoint(string endpoint)
     {
         endpoint = endpoint.Trim().TrimEnd('/');
@@ -290,19 +337,32 @@ public sealed class ClubRepository
         return uri.GetLeftPart(UriPartial.Authority);
     }
 
-    public int AddTariff(string name, string description, decimal hourlyRate, string badge)
+    private static string? NormalizeAgentEndpoint(string address, int port)
+    {
+        address = address.Trim();
+        if (address.Length == 0) return "";
+        if (Uri.TryCreate(address, UriKind.Absolute, out var existing) && existing.Scheme is "http" or "https")
+            return NormalizeAgentEndpoint(existing.GetLeftPart(UriPartial.Authority));
+        if (address.Contains('/') || address.Contains('@') || address.Contains('?') || address.Contains('#')) return null;
+        return NormalizeAgentEndpoint($"http://{address}:{port}");
+    }
+
+    public int AddTariff(string name, string description, int durationMinutes, decimal packagePrice, string availability, string badge)
     {
         name = name.Trim();
-        if (name.Length < 2 || hourlyRate <= 0) return 0;
+        if (name.Length < 2 || durationMinutes <= 0 || packagePrice <= 0) return 0;
+        var hourlyRate = packagePrice * 60m / durationMinutes;
         using var db = Open(); using var cmd = db.CreateCommand();
-        cmd.CommandText = "INSERT INTO Tariffs(Name,Description,PricePerHour,Badge) VALUES($name,$description,$rate,$badge); SELECT last_insert_rowid();";
+        cmd.CommandText = "INSERT INTO Tariffs(Name,Description,PricePerHour,Badge,DurationMinutes,PackagePrice,Availability) VALUES($name,$description,$rate,$badge,$minutes,$price,$availability); SELECT last_insert_rowid();";
         cmd.Parameters.AddWithValue("$name", name); cmd.Parameters.AddWithValue("$description", description.Trim());
         cmd.Parameters.AddWithValue("$rate", hourlyRate); cmd.Parameters.AddWithValue("$badge", badge.Trim());
+        cmd.Parameters.AddWithValue("$minutes", durationMinutes); cmd.Parameters.AddWithValue("$price", packagePrice);
+        cmd.Parameters.AddWithValue("$availability", availability.Trim());
         try { return Convert.ToInt32(cmd.ExecuteScalar()); }
         catch (SqliteException ex) when (ex.SqliteErrorCode == 19) { return 0; }
     }
 
-    public bool AddReservation(int computerId, int clientId, DateTime startsAt, int durationMinutes)
+    public bool AddReservation(int computerId, int clientId, DateTime startsAt, int durationMinutes, string note, int? reservationId = null)
     {
         if (startsAt <= DateTime.Now || durationMinutes <= 0) return false;
         var endsAt = startsAt.AddMinutes(durationMinutes);
@@ -319,18 +379,23 @@ public sealed class ClubRepository
         using (var existing = db.CreateCommand())
         {
             existing.Transaction = tx;
-            existing.CommandText = "SELECT StartsAt,DurationMinutes FROM Reservations WHERE ComputerId=$pc AND Status<>'Скасовано';";
+            existing.CommandText = "SELECT Id,StartsAt,DurationMinutes FROM Reservations WHERE ComputerId=$pc AND Status<>'Скасовано' AND ($exclude IS NULL OR Id<>$exclude);";
             existing.Parameters.AddWithValue("$pc", computerId);
+            existing.Parameters.AddWithValue("$exclude", (object?)reservationId ?? DBNull.Value);
             using var reader = existing.ExecuteReader();
             while (reader.Read())
             {
-                var existingStart = DateTime.Parse(reader.GetString(0));
-                var existingEnd = existingStart.AddMinutes(reader.GetInt32(1));
+                var existingStart = DateTime.Parse(reader.GetString(1));
+                var existingEnd = existingStart.AddMinutes(reader.GetInt32(2));
                 if (existingStart < endsAt && existingEnd > startsAt) { tx.Rollback(); return false; }
             }
         }
-        Execute(db, tx, "INSERT INTO Reservations(ComputerId,ClientId,StartsAt,DurationMinutes,Status) VALUES($pc,$client,$start,$minutes,'Підтверджено');",
-            ("$pc", computerId), ("$client", clientId), ("$start", startsAt.ToString("O")), ("$minutes", durationMinutes));
+        if (reservationId is int id)
+            Execute(db, tx, "UPDATE Reservations SET ComputerId=$pc,ClientId=$client,StartsAt=$start,DurationMinutes=$minutes,Note=$note WHERE Id=$id AND Status<>'Скасовано';",
+                ("$pc", computerId), ("$client", clientId), ("$start", startsAt.ToString("O")), ("$minutes", durationMinutes), ("$note", note.Trim()), ("$id", id));
+        else
+            Execute(db, tx, "INSERT INTO Reservations(ComputerId,ClientId,StartsAt,DurationMinutes,Status,Note) VALUES($pc,$client,$start,$minutes,'Підтверджено',$note);",
+                ("$pc", computerId), ("$client", clientId), ("$start", startsAt.ToString("O")), ("$minutes", durationMinutes), ("$note", note.Trim()));
         tx.Commit();
         return true;
     }
@@ -344,9 +409,14 @@ public sealed class ClubRepository
 
     public IReadOnlyList<ClientCard> GetClients()
     {
-        using var db=Open(); using var cmd=db.CreateCommand(); cmd.CommandText="SELECT Id,Name,Phone,Visits,FavoriteGame,LoyaltyPoints FROM Clients ORDER BY Name;";
+        using var db=Open(); using var cmd=db.CreateCommand(); cmd.CommandText="SELECT c.Id,c.Name,c.Phone,c.Visits,c.FavoriteGame,c.LoyaltyPoints,c.Email,c.BirthDate,c.AccountBalance,c.Note,c.CreatedAt,(SELECT MAX(EndedAt) FROM Sessions WHERE ClientId=c.Id) FROM Clients c ORDER BY c.Name;";
         using var r=cmd.ExecuteReader(); var list=new List<ClientCard>();
-        while(r.Read()) list.Add(new(r.GetInt32(0),r.GetString(1),r.GetString(2),r.GetInt32(3),r.GetString(4),r.GetInt32(5)));
+        while(r.Read()) list.Add(new ClientCard(r.GetInt32(0),r.GetString(1),r.GetString(2),r.GetInt32(3),r.GetString(4),r.GetInt32(5))
+        {
+            Email = r.GetString(6), BirthDate = r.IsDBNull(7) ? null : r.GetString(7),
+            AccountBalance = Convert.ToDecimal(r.GetDouble(8)), Note = r.GetString(9),
+            CreatedAt = DateTime.Parse(r.GetString(10)), LastVisit = r.IsDBNull(11) ? null : DateTime.Parse(r.GetString(11))
+        });
         return list;
     }
 
@@ -405,13 +475,14 @@ public sealed class ClubRepository
         cmd.Parameters.AddWithValue("$id",id); cmd.ExecuteNonQuery();
     }
 
-    public int AddClient(string name, string phone, string favoriteGame)
+    public int AddClient(string name, string phone, string email, string? birthDate, decimal accountBalance, string note, string favoriteGame = "Інша гра")
     {
         name = name.Trim();
         phone = phone.Trim();
         favoriteGame = favoriteGame.Trim();
         var phoneDigits = new string(phone.Where(char.IsDigit).ToArray());
-        if (name.Length < 2 || phoneDigits.Length is < 7 or > 15 || string.IsNullOrWhiteSpace(favoriteGame))
+        if (name.Length < 2 || phoneDigits.Length is < 7 or > 15 || accountBalance < 0 ||
+            (!string.IsNullOrWhiteSpace(email) && !email.Contains('@', StringComparison.Ordinal)))
             return 0;
 
         using var db = Open();
@@ -428,10 +499,15 @@ public sealed class ClubRepository
         }
 
         using var insert = db.CreateCommand();
-        insert.CommandText = "INSERT INTO Clients(Name,Phone,Visits,FavoriteGame) VALUES($name,$phone,0,$game);";
+        insert.CommandText = "INSERT INTO Clients(Name,Phone,Visits,FavoriteGame,Email,BirthDate,AccountBalance,Note,CreatedAt) VALUES($name,$phone,0,$game,$email,$birthDate,$balance,$note,$created);";
         insert.Parameters.AddWithValue("$name", name);
         insert.Parameters.AddWithValue("$phone", phone);
         insert.Parameters.AddWithValue("$game", favoriteGame);
+        insert.Parameters.AddWithValue("$email", email.Trim());
+        insert.Parameters.AddWithValue("$birthDate", string.IsNullOrWhiteSpace(birthDate) ? DBNull.Value : birthDate);
+        insert.Parameters.AddWithValue("$balance", accountBalance);
+        insert.Parameters.AddWithValue("$note", note.Trim());
+        insert.Parameters.AddWithValue("$created", DateTime.Now.ToString("O", CultureInfo.InvariantCulture));
         insert.ExecuteNonQuery();
         using var id = db.CreateCommand();
         id.CommandText = "SELECT last_insert_rowid();";
@@ -440,9 +516,24 @@ public sealed class ClubRepository
 
     public IReadOnlyList<TariffCard> GetTariffs()
     {
-        using var db=Open(); using var cmd=db.CreateCommand(); cmd.CommandText="SELECT Id,Name,Description,PricePerHour,Badge FROM Tariffs ORDER BY PricePerHour;";
+        using var db=Open(); using var cmd=db.CreateCommand(); cmd.CommandText="SELECT Id,Name,Description,PricePerHour,Badge,DurationMinutes,PackagePrice,Availability FROM Tariffs ORDER BY PricePerHour;";
         using var r=cmd.ExecuteReader(); var list=new List<TariffCard>();
-        while(r.Read()) list.Add(new(r.GetInt32(0),r.GetString(1),r.GetString(2),Convert.ToDecimal(r.GetDouble(3)),r.GetString(4)));
+        while(r.Read()) list.Add(new TariffCard(r.GetInt32(0),r.GetString(1),r.GetString(2),Convert.ToDecimal(r.GetDouble(3)),r.GetString(4))
+        {
+            DurationMinutes = r.GetInt32(5), PackagePrice = r.IsDBNull(6) ? Convert.ToDecimal(r.GetDouble(3)) : Convert.ToDecimal(r.GetDouble(6)),
+            Availability = r.GetString(7)
+        });
         return list;
+    }
+
+    public int GetVisitsForMonth(DateTime date)
+    {
+        using var db = Open(); using var cmd = db.CreateCommand();
+        var monthStart = new DateTime(date.Year, date.Month, 1);
+        var nextMonth = monthStart.AddMonths(1);
+        cmd.CommandText = "SELECT COUNT(*) FROM Sessions WHERE StartedAt >= $start AND StartedAt < $end;";
+        cmd.Parameters.AddWithValue("$start", monthStart.ToString("O", CultureInfo.InvariantCulture));
+        cmd.Parameters.AddWithValue("$end", nextMonth.ToString("O", CultureInfo.InvariantCulture));
+        return Convert.ToInt32(cmd.ExecuteScalar());
     }
 }
