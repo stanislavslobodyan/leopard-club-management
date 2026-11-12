@@ -61,12 +61,16 @@ public partial class MainViewModel : ViewModelBase
 
     public ObservableCollection<SessionCardViewModel> ActiveSessions { get; } = [];
     public ObservableCollection<ComputerCard> Computers { get; } = [];
+    public ObservableCollection<ComputerCard> ComputerRecords { get; } = [];
     public ObservableCollection<ComputerCard> VisibleComputers { get; } = [];
     public ObservableCollection<ComputerCard> AvailableComputers { get; } = [];
     public ObservableCollection<ReservationCard> Reservations { get; } = [];
     public ObservableCollection<ClientCard> Clients { get; } = [];
+    public ObservableCollection<ClientCard> ClientRecords { get; } = [];
     public ObservableCollection<ClientCard> VisibleClients { get; } = [];
     public ObservableCollection<TariffCard> Tariffs { get; } = [];
+    public ObservableCollection<TariffCard> TariffRecords { get; } = [];
+    public ObservableCollection<TariffCard> VisibleTariffs { get; } = [];
     public ObservableCollection<HistorySessionCard> HistorySessions { get; } = [];
     public ObservableCollection<ClubNotification> Notifications { get; } = [];
     public ObservableCollection<OccupancyBarViewModel> HourlyOccupancy { get; } = [];
@@ -169,9 +173,16 @@ public partial class MainViewModel : ViewModelBase
     public bool HasNoSessions => ActiveSessions.Count == 0;
     public bool HasVisibleSessions => ActiveSessions.Count > 0;
     public bool ShowWideSessionTable => IsWide && HasVisibleSessions;
+    public bool HasStatusMessage => !string.IsNullOrWhiteSpace(StatusMessage);
     public bool HasNoClients => VisibleClients.Count == 0;
-    public bool HasNoComputers => Computers.Count == 0;
-    public bool HasNoTariffs => Tariffs.Count == 0;
+    public bool HasNoComputers => VisibleComputers.Count == 0;
+    public bool HasNoTariffs => VisibleTariffs.Count == 0;
+    public string ComputerArchiveToggleText => ShowArchivedComputers ? "Активні ПК" : $"Архів ПК · {ComputerRecords.Count(c => c.IsArchived)}";
+    public string ClientArchiveToggleText => ShowArchivedClients ? "Активні клієнти" : $"Архів · {ClientRecords.Count(c => c.IsArchived)}";
+    public string TariffArchiveToggleText => ShowArchivedTariffs ? "Активні тарифи" : $"Архів · {TariffRecords.Count(t => t.IsArchived)}";
+    public string ComputerEmptyStateText => ShowArchivedComputers ? "Архів робочих місць порожній." : "У базі ще немає робочих місць. Додайте ПК та внесіть їхні характеристики.";
+    public string ClientEmptyStateText => ShowArchivedClients ? "Архів клієнтів порожній." : "Клієнтів за цим запитом не знайдено.";
+    public string TariffEmptyStateText => ShowArchivedTariffs ? "Архів тарифів порожній." : "Активних тарифів поки немає.";
     public bool HasNoReservations => Reservations.Count == 0;
     public bool HasClientFormError => !string.IsNullOrWhiteSpace(NewClientErrorMessage);
     public bool CanSaveClient
@@ -291,7 +302,7 @@ public partial class MainViewModel : ViewModelBase
     private bool isCompact;
 
     [ObservableProperty]
-    private string statusMessage = "Дані клубу зберігаються локально у SQLite.";
+    private string statusMessage = "";
 
     [ObservableProperty]
     private bool isStartDialogOpen;
@@ -340,6 +351,13 @@ public partial class MainViewModel : ViewModelBase
 
     [ObservableProperty]
     private string clientFilterText = "";
+
+    [ObservableProperty] private bool showArchivedComputers;
+    [ObservableProperty] private bool showArchivedClients;
+    [ObservableProperty] private bool showArchivedTariffs;
+    [ObservableProperty] private int? editingComputerId;
+    [ObservableProperty] private int? editingClientId;
+    [ObservableProperty] private int? editingTariffId;
 
     [ObservableProperty] private bool isComputerDialogOpen;
     [ObservableProperty] private string newComputerLabel = "";
@@ -414,6 +432,25 @@ public partial class MainViewModel : ViewModelBase
     partial void OnNewClientFavoriteGameChanged(string value) => OnClientFormValueChanged();
     partial void OnNewClientErrorMessageChanged(string value) => OnPropertyChanged(nameof(HasClientFormError));
     partial void OnClientFilterTextChanged(string value) => ApplyClientFilter();
+    partial void OnShowArchivedComputersChanged(bool value) => ApplyComputerFilter();
+    partial void OnShowArchivedClientsChanged(bool value) => ApplyClientFilter();
+    partial void OnShowArchivedTariffsChanged(bool value) => ApplyTariffFilter();
+    partial void OnStatusMessageChanged(string value) => OnPropertyChanged(nameof(HasStatusMessage));
+    partial void OnEditingComputerIdChanged(int? value)
+    {
+        OnPropertyChanged(nameof(ComputerDialogTitle));
+        OnPropertyChanged(nameof(ComputerDialogAction));
+    }
+    partial void OnEditingClientIdChanged(int? value)
+    {
+        OnPropertyChanged(nameof(ClientDialogTitle));
+        OnPropertyChanged(nameof(ClientDialogAction));
+    }
+    partial void OnEditingTariffIdChanged(int? value)
+    {
+        OnPropertyChanged(nameof(TariffDialogTitle));
+        OnPropertyChanged(nameof(TariffDialogAction));
+    }
     partial void OnNewComputerLabelChanged(string value) => ComputerFormError = "";
     partial void OnNewComputerZoneChanged(string value) => ComputerFormError = "";
     partial void OnNewTariffNameChanged(string value) => TariffFormError = "";
@@ -440,6 +477,12 @@ public partial class MainViewModel : ViewModelBase
     partial void OnNewClientBalanceChanged(string value) => OnClientFormValueChanged();
     partial void OnAgentStatusTextChanged(string value) => OnPropertyChanged(nameof(AgentStatusColor));
 
+    public string ComputerDialogTitle => EditingComputerId is null ? "Додати ПК" : "Редагувати ПК";
+    public string ComputerDialogAction => EditingComputerId is null ? "Додати ПК" : "Зберегти зміни";
+    public string ClientDialogTitle => EditingClientId is null ? "Додати клієнта" : "Редагувати клієнта";
+    public string ClientDialogAction => EditingClientId is null ? "Додати клієнта" : "Зберегти зміни";
+    public string TariffDialogTitle => EditingTariffId is null ? "Додати тариф" : "Редагувати тариф";
+    public string TariffDialogAction => EditingTariffId is null ? "Зберегти тариф" : "Зберегти зміни";
     private void OnReservationFormChanged()
     {
         OnPropertyChanged(nameof(ReservationEndTimeText));
@@ -470,7 +513,8 @@ public partial class MainViewModel : ViewModelBase
 
     private void Refresh()
     {
-        Computers.ReplaceWith(_repository.GetComputers());
+        ComputerRecords.ReplaceWith(_repository.GetComputers(includeArchived: true));
+        Computers.ReplaceWith(ComputerRecords.Where(c => !c.IsArchived));
         AvailableComputers.ReplaceWith(Computers.Where(c => c.Status == "Вільний"));
         Reservations.ReplaceWith(_repository.GetReservations());
         OnPropertyChanged(nameof(ReservationsForSelectedDay));
@@ -479,10 +523,13 @@ public partial class MainViewModel : ViewModelBase
         OnPropertyChanged(nameof(NextReservation));
         OnPropertyChanged(nameof(HasUpcomingReservation));
         OnPropertyChanged(nameof(HasNoUpcomingReservation));
-        Clients.ReplaceWith(_repository.GetClients());
+        ClientRecords.ReplaceWith(_repository.GetClients(includeArchived: true));
+        Clients.ReplaceWith(ClientRecords.Where(c => !c.IsArchived));
         _visitsThisMonth = _repository.GetVisitsForMonth(DateTime.Today);
         ApplyClientFilter();
-        Tariffs.ReplaceWith(_repository.GetTariffs());
+        TariffRecords.ReplaceWith(_repository.GetTariffs(includeArchived: true));
+        Tariffs.ReplaceWith(TariffRecords.Where(t => !t.IsArchived));
+        ApplyTariffFilter();
         _sessionCache = _repository.GetActiveSessions();
         HistorySessions.ReplaceWith(_repository.GetCompletedSessions());
         RefreshAccruedAmount();
@@ -500,6 +547,12 @@ public partial class MainViewModel : ViewModelBase
         OnPropertyChanged(nameof(OfflineSegmentWidth));
         OnPropertyChanged(nameof(ComputerCount));
         OnPropertyChanged(nameof(HasNoComputers));
+        OnPropertyChanged(nameof(ComputerArchiveToggleText));
+        OnPropertyChanged(nameof(ClientArchiveToggleText));
+        OnPropertyChanged(nameof(TariffArchiveToggleText));
+        OnPropertyChanged(nameof(ComputerEmptyStateText));
+        OnPropertyChanged(nameof(ClientEmptyStateText));
+        OnPropertyChanged(nameof(TariffEmptyStateText));
         OnPropertyChanged(nameof(HasNoTariffs));
         OnPropertyChanged(nameof(HasNoReservations));
         OnPropertyChanged(nameof(HasHistory));
@@ -539,25 +592,40 @@ public partial class MainViewModel : ViewModelBase
     private void ApplyClientFilter()
     {
         var query = ClientFilterText.Trim();
-        VisibleClients.ReplaceWith(Clients.Where(client =>
-            string.IsNullOrWhiteSpace(query) ||
-            client.Name.Contains(query, StringComparison.OrdinalIgnoreCase) ||
-            client.Phone.Contains(query, StringComparison.OrdinalIgnoreCase) ||
-            client.FavoriteGame.Contains(query, StringComparison.OrdinalIgnoreCase)));
+        VisibleClients.ReplaceWith(ClientRecords.Where(client => client.IsArchived == ShowArchivedClients &&
+            (string.IsNullOrWhiteSpace(query) ||
+             client.Name.Contains(query, StringComparison.OrdinalIgnoreCase) ||
+             client.Phone.Contains(query, StringComparison.OrdinalIgnoreCase) ||
+             client.Email.Contains(query, StringComparison.OrdinalIgnoreCase) ||
+             client.FavoriteGame.Contains(query, StringComparison.OrdinalIgnoreCase))));
         OnPropertyChanged(nameof(HasNoClients));
+        OnPropertyChanged(nameof(ClientArchiveToggleText));
+        OnPropertyChanged(nameof(ClientEmptyStateText));
     }
 
     private void ApplyComputerFilter()
     {
         var query = ComputerFilterText.Trim();
-        VisibleComputers.ReplaceWith(Computers.Where(computer =>
-            string.IsNullOrWhiteSpace(query) ||
-            computer.ComputerLabel.Contains(query, StringComparison.OrdinalIgnoreCase) ||
-            computer.Zone.Contains(query, StringComparison.OrdinalIgnoreCase) ||
-            computer.Processor.Contains(query, StringComparison.OrdinalIgnoreCase) ||
-            computer.GraphicsCard.Contains(query, StringComparison.OrdinalIgnoreCase) ||
-            computer.Memory.Contains(query, StringComparison.OrdinalIgnoreCase) ||
-            computer.Status.Contains(query, StringComparison.OrdinalIgnoreCase)));
+        VisibleComputers.ReplaceWith(ComputerRecords.Where(computer => computer.IsArchived == ShowArchivedComputers &&
+            (string.IsNullOrWhiteSpace(query) ||
+             computer.ComputerLabel.Contains(query, StringComparison.OrdinalIgnoreCase) ||
+             computer.NetworkName.Contains(query, StringComparison.OrdinalIgnoreCase) ||
+             computer.Zone.Contains(query, StringComparison.OrdinalIgnoreCase) ||
+             computer.Processor.Contains(query, StringComparison.OrdinalIgnoreCase) ||
+             computer.GraphicsCard.Contains(query, StringComparison.OrdinalIgnoreCase) ||
+             computer.Memory.Contains(query, StringComparison.OrdinalIgnoreCase) ||
+             computer.Status.Contains(query, StringComparison.OrdinalIgnoreCase))));
+        OnPropertyChanged(nameof(HasNoComputers));
+        OnPropertyChanged(nameof(ComputerArchiveToggleText));
+        OnPropertyChanged(nameof(ComputerEmptyStateText));
+    }
+
+    private void ApplyTariffFilter()
+    {
+        VisibleTariffs.ReplaceWith(TariffRecords.Where(t => t.IsArchived == ShowArchivedTariffs));
+        OnPropertyChanged(nameof(HasNoTariffs));
+        OnPropertyChanged(nameof(TariffArchiveToggleText));
+        OnPropertyChanged(nameof(TariffEmptyStateText));
     }
 
     private void RefreshHourlyOccupancy()
@@ -713,9 +781,81 @@ public partial class MainViewModel : ViewModelBase
         RefreshNotifications();
     }
 
+    [RelayCommand] private void ToggleArchivedComputers() => ShowArchivedComputers = !ShowArchivedComputers;
+    [RelayCommand] private void ToggleArchivedClients() => ShowArchivedClients = !ShowArchivedClients;
+    [RelayCommand] private void ToggleArchivedTariffs() => ShowArchivedTariffs = !ShowArchivedTariffs;
+
+    [RelayCommand]
+    private void ToggleComputerArchive(int id)
+    {
+        var computer = ComputerRecords.FirstOrDefault(item => item.Id == id);
+        if (computer is null) return;
+        if (!_repository.SetComputerArchived(id, !computer.IsArchived))
+        {
+            StatusMessage = computer.IsArchived
+                ? "Не вдалося повернути ПК з архіву. Перевірте, чи назва не зайнята."
+                : "ПК має активний сеанс або майбутнє бронювання. Спершу завершіть їх.";
+            return;
+        }
+        Refresh();
+        StatusMessage = computer.IsArchived ? $"{computer.ComputerLabel} повернуто з архіву." : $"{computer.ComputerLabel} переміщено до архіву.";
+    }
+
+    [RelayCommand]
+    private void ToggleClientArchive(int id)
+    {
+        var client = ClientRecords.FirstOrDefault(item => item.Id == id);
+        if (client is null) return;
+        if (!_repository.SetClientArchived(id, !client.IsArchived))
+        {
+            StatusMessage = client.IsArchived
+                ? "Не вдалося повернути клієнта з архіву. Перевірте, чи номер телефону не зайнятий."
+                : "У клієнта є активний сеанс або майбутнє бронювання. Спершу завершіть їх.";
+            return;
+        }
+        Refresh();
+        StatusMessage = client.IsArchived ? $"Клієнта «{client.Name}» повернуто з архіву." : $"Клієнта «{client.Name}» переміщено до архіву.";
+    }
+
+    [RelayCommand]
+    private void ToggleTariffArchive(int id)
+    {
+        var tariff = TariffRecords.FirstOrDefault(item => item.Id == id);
+        if (tariff is null) return;
+        if (!_repository.SetTariffArchived(id, !tariff.IsArchived))
+        {
+            StatusMessage = tariff.IsArchived
+                ? "Не вдалося повернути тариф з архіву. Перевірте, чи назва не зайнята."
+                : "Цей тариф використовується активним сеансом. Його можна архівувати після завершення.";
+            return;
+        }
+        Refresh();
+        StatusMessage = tariff.IsArchived ? $"Тариф «{tariff.Name}» повернуто з архіву." : $"Тариф «{tariff.Name}» переміщено до архіву.";
+    }
+
+    [RelayCommand]
+    private void EditComputer(int id)
+    {
+        var item = ComputerRecords.FirstOrDefault(computer => computer.Id == id && !computer.IsArchived);
+        if (item is null) return;
+        EditingComputerId = item.Id;
+        NewComputerLabel = item.ComputerLabel;
+        NewComputerZone = ZoneOptions.Contains(item.Zone) ? item.Zone : ZoneOptions.First();
+        NewComputerNetworkName = item.NetworkName;
+        NewComputerProcessor = item.Processor;
+        NewComputerGraphicsCard = item.GraphicsCard;
+        NewComputerMemory = item.Memory;
+        NewComputerMonitor = item.Monitor;
+        NewComputerStorage = item.Storage;
+        NewComputerAgentEndpoint = "";
+        ComputerFormError = "";
+        IsComputerDialogOpen = true;
+    }
+
     [RelayCommand]
     private void ShowNewComputerDialog()
     {
+        EditingComputerId = null;
         NewComputerLabel = ""; NewComputerZone = ZoneOptions.First(); NewComputerNetworkName = ""; NewComputerProcessor = ""; NewComputerGraphicsCard = "";
         NewComputerMemory = ""; NewComputerMonitor = ""; NewComputerStorage = ""; ComputerFormError = "";
         NewComputerAgentEndpoint = "";
@@ -730,15 +870,27 @@ public partial class MainViewModel : ViewModelBase
             ComputerFormError = "Вкажіть назву робочого місця та зону.";
             return;
         }
-        var id = _repository.AddComputer(NewComputerLabel, NewComputerZone, NewComputerNetworkName, NewComputerProcessor,
-            NewComputerGraphicsCard, NewComputerMemory, NewComputerMonitor, NewComputerStorage, NewComputerAgentEndpoint);
-        if (id == 0) { ComputerFormError = "Перевірте назву ПК та адресу агента (http://хост:47831); назва має бути унікальною."; return; }
+        var editing = EditingComputerId;
+        var saved = editing is int computerId
+            ? _repository.UpdateComputer(computerId, NewComputerLabel, NewComputerZone, NewComputerNetworkName,
+                NewComputerProcessor, NewComputerGraphicsCard, NewComputerMemory, NewComputerMonitor, NewComputerStorage)
+            : _repository.AddComputer(NewComputerLabel, NewComputerZone, NewComputerNetworkName, NewComputerProcessor,
+                NewComputerGraphicsCard, NewComputerMemory, NewComputerMonitor, NewComputerStorage, NewComputerAgentEndpoint) != 0;
+        if (!saved) { ComputerFormError = "Перевірте поля. Назва ПК має бути унікальною."; return; }
         IsComputerDialogOpen = false;
+        EditingComputerId = null;
         Refresh();
-        StatusMessage = $"Робоче місце {NewComputerLabel.Trim()} додано до обліку.";
+        StatusMessage = editing is null
+            ? $"Робоче місце {NewComputerLabel.Trim()} додано до обліку."
+            : $"Зміни для {NewComputerLabel.Trim()} збережено.";
     }
 
-    [RelayCommand] private void CancelNewComputerDialog() => IsComputerDialogOpen = false;
+    [RelayCommand]
+    private void CancelNewComputerDialog()
+    {
+        IsComputerDialogOpen = false;
+        EditingComputerId = null;
+    }
 
     [RelayCommand]
     private void ConfigureComputerAgent(int computerId)
@@ -779,8 +931,25 @@ public partial class MainViewModel : ViewModelBase
     [RelayCommand]
     private void ShowNewTariffDialog()
     {
+        EditingTariffId = null;
         NewTariffName = ""; NewTariffDescription = ""; NewTariffPrice = ""; NewTariffDurationMinutes = "60";
         NewTariffAvailability = TariffAvailabilityOptions.First(); NewTariffBadge = ""; TariffFormError = "";
+        IsTariffDialogOpen = true;
+    }
+
+    [RelayCommand]
+    private void EditTariff(int id)
+    {
+        var item = TariffRecords.FirstOrDefault(tariff => tariff.Id == id && !tariff.IsArchived);
+        if (item is null) return;
+        EditingTariffId = item.Id;
+        NewTariffName = item.Name;
+        NewTariffDescription = item.Description;
+        NewTariffPrice = (item.PackagePrice > 0 ? item.PackagePrice : item.PricePerHour).ToString("0.##", CultureInfo.InvariantCulture);
+        NewTariffDurationMinutes = item.DurationMinutes.ToString(CultureInfo.InvariantCulture);
+        NewTariffAvailability = TariffAvailabilityOptions.Contains(item.Availability) ? item.Availability : TariffAvailabilityOptions.First();
+        NewTariffBadge = item.Badge;
+        TariffFormError = "";
         IsTariffDialogOpen = true;
     }
 
@@ -793,14 +962,23 @@ public partial class MainViewModel : ViewModelBase
             TariffFormError = "Вкажіть тривалість у хвилинах і вартість пакета, більшу за нуль.";
             return;
         }
-        var id = _repository.AddTariff(NewTariffName, NewTariffDescription, durationMinutes, price, NewTariffAvailability, NewTariffBadge);
-        if (id == 0) { TariffFormError = "Вкажіть назву тарифу; тариф із такою назвою вже існує."; return; }
+        var editing = EditingTariffId;
+        var saved = editing is int tariffId
+            ? _repository.UpdateTariff(tariffId, NewTariffName, NewTariffDescription, durationMinutes, price, NewTariffAvailability, NewTariffBadge)
+            : _repository.AddTariff(NewTariffName, NewTariffDescription, durationMinutes, price, NewTariffAvailability, NewTariffBadge) != 0;
+        if (!saved) { TariffFormError = "Вкажіть назву тарифу; тариф із такою назвою вже існує."; return; }
         IsTariffDialogOpen = false;
+        EditingTariffId = null;
         Refresh();
-        StatusMessage = $"Тариф «{NewTariffName.Trim()}» додано.";
+        StatusMessage = editing is null ? $"Тариф «{NewTariffName.Trim()}» додано." : $"Зміни тарифу «{NewTariffName.Trim()}» збережено.";
     }
 
-    [RelayCommand] private void CancelNewTariffDialog() => IsTariffDialogOpen = false;
+    [RelayCommand]
+    private void CancelNewTariffDialog()
+    {
+        IsTariffDialogOpen = false;
+        EditingTariffId = null;
+    }
 
     [RelayCommand]
     private void ShowNewReservationDialog()
@@ -936,6 +1114,7 @@ public partial class MainViewModel : ViewModelBase
     [RelayCommand]
     private void ShowNewClientDialog()
     {
+        EditingClientId = null;
         _returnToStartAfterClient = IsStartDialogOpen;
         if (_returnToStartAfterClient)
             IsStartDialogOpen = false;
@@ -951,6 +1130,25 @@ public partial class MainViewModel : ViewModelBase
     }
 
     [RelayCommand]
+    private void EditClient(int id)
+    {
+        var client = ClientRecords.FirstOrDefault(item => item.Id == id && !item.IsArchived);
+        if (client is null) return;
+        _returnToStartAfterClient = false;
+        EditingClientId = client.Id;
+        NewClientName = client.Name;
+        NewClientPhone = client.Phone;
+        NewClientEmail = client.Email;
+        NewClientBirthDate = DateTimeOffset.TryParse(client.BirthDate, CultureInfo.InvariantCulture, DateTimeStyles.AssumeLocal, out var birthDate)
+            ? birthDate : null;
+        NewClientBalance = client.AccountBalance.ToString("0.##", CultureInfo.InvariantCulture);
+        NewClientNote = client.Note;
+        NewClientFavoriteGame = client.FavoriteGame;
+        NewClientErrorMessage = "";
+        IsNewClientDialogOpen = true;
+    }
+
+    [RelayCommand]
     private void SaveNewClient()
     {
         if (!CanSaveClient)
@@ -960,8 +1158,12 @@ public partial class MainViewModel : ViewModelBase
         }
 
         decimal.TryParse(NewClientBalance.Replace(',', '.'), NumberStyles.Number, CultureInfo.InvariantCulture, out var initialBalance);
-        var id = _repository.AddClient(NewClientName, NewClientPhone, NewClientEmail,
-            NewClientBirthDate?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture), initialBalance, NewClientNote);
+        var editing = EditingClientId;
+        var id = editing is int clientId
+            ? (_repository.UpdateClient(clientId, NewClientName, NewClientPhone, NewClientEmail,
+                NewClientBirthDate?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture), initialBalance, NewClientNote) ? clientId : 0)
+            : _repository.AddClient(NewClientName, NewClientPhone, NewClientEmail,
+                NewClientBirthDate?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture), initialBalance, NewClientNote);
         if (id == 0)
         {
             NewClientErrorMessage = "Клієнт із таким номером телефону вже існує.";
@@ -969,15 +1171,18 @@ public partial class MainViewModel : ViewModelBase
         }
 
         IsNewClientDialogOpen = false;
+        EditingClientId = null;
         ClientFilterText = "";
         Refresh();
         SelectedClient = Clients.FirstOrDefault(client => client.Id == id);
-        if (_returnToStartAfterClient)
+        if (editing is null && _returnToStartAfterClient)
             IsStartDialogOpen = true;
-        else
+        else if (editing is null)
             SelectedPage = "Клієнти";
         _returnToStartAfterClient = false;
-        StatusMessage = $"Клієнта «{NewClientName.Trim()}» додано. Його вже можна вибрати для нового сеансу.";
+        StatusMessage = editing is null
+            ? $"Клієнта «{NewClientName.Trim()}» додано. Його вже можна вибрати для нового сеансу."
+            : $"Профіль клієнта «{NewClientName.Trim()}» оновлено.";
     }
 
     [RelayCommand]
@@ -985,6 +1190,7 @@ public partial class MainViewModel : ViewModelBase
     {
         IsNewClientDialogOpen = false;
         NewClientErrorMessage = "";
+        EditingClientId = null;
         if (_returnToStartAfterClient)
             IsStartDialogOpen = true;
         _returnToStartAfterClient = false;

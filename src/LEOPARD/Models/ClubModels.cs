@@ -51,6 +51,12 @@ public sealed record ComputerCard(
     public int AgentPort { get; init; } = 47831;
     public string AgentConnectionKey { get; init; } = "";
     public int AgentPollSeconds { get; init; } = 15;
+    public bool IsArchived { get; init; }
+    public bool CanEdit => !IsArchived;
+    public string ArchiveActionText => IsArchived ? "↶" : "▱";
+    public string ArchiveActionTooltip => IsArchived ? "Повернути з архіву" : "Архівувати ПК";
+    public string ManagementStatusText => IsArchived ? "В архіві" : Status;
+    public string ManagementStatusColor => IsArchived ? "#FFB454" : StatusColor;
     public string StatusColor => Status switch
     {
         "Активний" => "#C7F36B",
@@ -89,6 +95,12 @@ public sealed record ClientCard(
     public string Note { get; init; } = "";
     public DateTime CreatedAt { get; init; } = DateTime.MinValue;
     public DateTime? LastVisit { get; init; }
+    public bool IsArchived { get; init; }
+    public bool CanEdit => !IsArchived;
+    public string ArchiveActionText => IsArchived ? "↶" : "▱";
+    public string ArchiveActionTooltip => IsArchived ? "Повернути з архіву" : "Архівувати клієнта";
+    public string ManagementStatusText => IsArchived ? "В архіві" : StatusText;
+    public string ManagementStatusColor => IsArchived ? "#FFB454" : "#9FE2B2";
     public string VisitsText => $"Візитів: {Visits}";
     public string LoyaltyText => $"Бали: {LoyaltyPoints}";
     public string AccountBalanceText => AccountBalance.ToString("N0", CultureInfo.GetCultureInfo("uk-UA")) + " ₴";
@@ -137,6 +149,10 @@ public sealed record TariffCard(
     public int DurationMinutes { get; init; } = 60;
     public decimal PackagePrice { get; init; }
     public string Availability { get; init; } = "Увесь день · усі комп’ютери";
+    public bool IsArchived { get; init; }
+    public bool CanEdit => !IsArchived;
+    public string ArchiveActionText => IsArchived ? "↶" : "▱";
+    public string ArchiveActionTooltip => IsArchived ? "Повернути з архіву" : "Архівувати тариф";
     public string PriceText => (PackagePrice > 0 ? PackagePrice : PricePerHour).ToString("0", CultureInfo.GetCultureInfo("uk-UA"));
     public string DurationText
     {
