@@ -49,20 +49,22 @@ dotnet build LEOPARD.slnx -c Release
 
 ### Запуск програми на другому ПК без .NET
 
-На ПК розробки з .NET 10 SDK створи автономну збірку Windows x64:
+На ПК розробки з .NET 10 SDK створи автономний пакет Windows x64:
 
 ```cmd
 dotnet publish src\LEOPARD\LEOPARD.csproj -c Release -r win-x64 --self-contained true -o publish\LEOPARD
 ```
 
-Скопіюй **усю** папку `publish\LEOPARD` на другий ПК, наприклад у `C:\LEOPARD`. Там не потрібно встановлювати .NET або Avalonia. Запусти `LEOPARD.exe`:
+Скопіюй **усю** папку `publish\LEOPARD` на другий ПК так, щоб виконуваний файл лежав у `D:\LEOPARD\LEOPARD.exe`. Можна перенести папку через USB або запакувати її в ZIP. На другому ПК не потрібні .NET, Git чи Avalonia.
+
+У CMD на другому ПК запусти:
 
 ```cmd
-cd /d C:\LEOPARD
+cd /d "D:\LEOPARD"
 LEOPARD.exe
 ```
 
-Не копіюй лише `.exe`: застосунку потрібні сусідні файли з цієї папки. Для оновлення створи нову збірку й заміни файли програми, не видаляючи базу даних на цільовому ПК.
+Не копіюй лише `.exe`: поруч мають залишатися всі DLL, runtime-файли й інші файли з пакета. При першому запуску програма створить локальну базу в `%LOCALAPPDATA%\LEOPARD\club.sqlite3` під поточним обліковим записом Windows. Для оновлення заміни файли застосунку новим пакетом, але не видаляй файл бази.
 
 ### Розгортання PC Agent
 
