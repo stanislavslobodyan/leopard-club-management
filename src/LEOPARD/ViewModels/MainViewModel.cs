@@ -46,6 +46,9 @@ public partial class MainViewModel : ViewModelBase
             OnPropertyChanged(nameof(CurrentTimeText));
             OnPropertyChanged(nameof(CurrentDateText));
             OnPropertyChanged(nameof(ActiveAccruedAmount));
+            OnPropertyChanged(nameof(ActiveRunningCount));
+            OnPropertyChanged(nameof(SessionsUnder15Count));
+            OnPropertyChanged(nameof(OverdueSessionCount));
             OnPropertyChanged(nameof(HasUrgentSessions));
             OnPropertyChanged(nameof(SessionAttentionText));
             RefreshHourlyOccupancy();
@@ -75,6 +78,10 @@ public partial class MainViewModel : ViewModelBase
     public string CurrentDateText => DateTime.Now.ToString("d MMMM yyyy", CultureInfo.GetCultureInfo("uk-UA"));
     public string CurrentClubText => "Клуб · основна зала";
     public int ActiveCount => _sessionCache.Count;
+    public int ActiveRunningCount => _sessionCache.Count(s => s.PlannedEnd > DateTime.Now);
+    public int SessionsUnder15Count => _sessionCache.Count(s =>
+        s.PlannedEnd > DateTime.Now && s.PlannedEnd - DateTime.Now <= TimeSpan.FromMinutes(15));
+    public int OverdueSessionCount => _sessionCache.Count(s => s.PlannedEnd <= DateTime.Now);
     public int FreeCount => Computers.Count(c => c.Status == "Вільний");
     public int ReservedCount => Computers.Count(c => c.Status == "Заброньований");
     public int ComputerCount => Computers.Count;
@@ -126,6 +133,8 @@ public partial class MainViewModel : ViewModelBase
     public bool HasNoHistory => HistorySessions.Count == 0;
     public string TodayAccruedAmount => _todayAccruedAmount.ToString("0.00", CultureInfo.GetCultureInfo("uk-UA")) + " ₴";
     public bool HasNoSessions => ActiveSessions.Count == 0;
+    public bool HasVisibleSessions => ActiveSessions.Count > 0;
+    public bool ShowWideSessionTable => IsWide && HasVisibleSessions;
     public bool HasNoClients => VisibleClients.Count == 0;
     public bool HasNoComputers => Computers.Count == 0;
     public bool HasNoTariffs => Tariffs.Count == 0;
@@ -187,6 +196,10 @@ public partial class MainViewModel : ViewModelBase
     public bool IsTariffs => SelectedPage == "Тарифи";
     public bool IsHistory => SelectedPage == "Історія";
     public bool IsSettings => SelectedPage == "Налаштування";
+    public bool IsAllSessionFilter => SelectedFilter == "Усі";
+    public bool IsActiveSessionFilter => SelectedFilter == "Активні";
+    public bool IsExpiringSessionFilter => SelectedFilter == "Менше 15 хв";
+    public bool IsOverdueSessionFilter => SelectedFilter == "Потрібна увага";
     public bool IsWide => !IsCompact;
 
     [ObservableProperty]
@@ -219,6 +232,10 @@ public partial class MainViewModel : ViewModelBase
     private bool isNotificationPanelOpen;
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsAllSessionFilter))]
+    [NotifyPropertyChangedFor(nameof(IsActiveSessionFilter))]
+    [NotifyPropertyChangedFor(nameof(IsExpiringSessionFilter))]
+    [NotifyPropertyChangedFor(nameof(IsOverdueSessionFilter))]
     private string selectedFilter = "Усі";
 
     [ObservableProperty]
@@ -234,6 +251,7 @@ public partial class MainViewModel : ViewModelBase
     [NotifyPropertyChangedFor(nameof(IsMobileComputerAction))]
     [NotifyPropertyChangedFor(nameof(IsMobileClientAction))]
     [NotifyPropertyChangedFor(nameof(IsMobileTariffAction))]
+    [NotifyPropertyChangedFor(nameof(ShowWideSessionTable))]
     private bool isCompact;
 
     [ObservableProperty]
@@ -463,7 +481,8 @@ public partial class MainViewModel : ViewModelBase
             var minutesLeft = (s.PlannedEnd - now).TotalMinutes;
             var matchesFilter = SelectedFilter switch
             {
-                "Менше 15 хв" => minutesLeft <= 15,
+                "Активні" => minutesLeft > 0,
+                "Менше 15 хв" => minutesLeft is > 0 and <= 15,
                 "Потрібна увага" => minutesLeft <= 0,
                 _ => true
             };
@@ -475,6 +494,11 @@ public partial class MainViewModel : ViewModelBase
             ActiveSessions.Add(new SessionCardViewModel(session, ExtendSession, EndSession));
         OnPropertyChanged(nameof(ActiveCount));
         OnPropertyChanged(nameof(HasNoSessions));
+        OnPropertyChanged(nameof(HasVisibleSessions));
+        OnPropertyChanged(nameof(ShowWideSessionTable));
+        OnPropertyChanged(nameof(ActiveRunningCount));
+        OnPropertyChanged(nameof(SessionsUnder15Count));
+        OnPropertyChanged(nameof(OverdueSessionCount));
     }
 
     private void ExtendSession(int id, int minutes)
@@ -790,6 +814,13 @@ public partial class MainViewModel : ViewModelBase
     }
 
     [RelayCommand] private void ShowDashboard() => SelectedPage = "Огляд";
+    [RelayCommand]
+    private void SetSessionFilter(string filter)
+    {
+        if (FilterOptions.Contains(filter))
+            SelectedFilter = filter;
+    }
+
     [RelayCommand] private void ShowSessions() => SelectedPage = "Сеанси";
     [RelayCommand] private void ShowBookings() => SelectedPage = "Бронювання";
     [RelayCommand] private void ShowComputers() => SelectedPage = "Комп’ютери";

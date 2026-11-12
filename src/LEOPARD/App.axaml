@@ -58,6 +58,15 @@
             <Setter Property="BorderBrush" Value="#202630" />
             <Setter Property="BorderThickness" Value="0,0,0,1" />
         </Style>
+        <Style Selector="Border.table-row:pointerover">
+            <Setter Property="Background" Value="#1A202A" />
+        </Style>
+        <Style Selector="Border.empty-state">
+            <Setter Property="Background" Value="#121820" />
+            <Setter Property="BorderBrush" Value="#242B36" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="11" />
+        </Style>
         <Style Selector="Button">
             <Setter Property="Padding" Value="11,8" />
             <Setter Property="CornerRadius" Value="8" />
@@ -69,11 +78,43 @@
             <Setter Property="Foreground" Value="#12160C" />
             <Setter Property="BorderThickness" Value="0" />
         </Style>
+        <Style Selector="Button.primary:pointerover">
+            <Setter Property="Background" Value="#D8FF88" />
+        </Style>
+        <Style Selector="Button.primary:pressed">
+            <Setter Property="Background" Value="#B2E84F" />
+        </Style>
         <Style Selector="Button.secondary">
             <Setter Property="Background" Value="#1B222C" />
             <Setter Property="Foreground" Value="#E9EDF3" />
             <Setter Property="BorderBrush" Value="#2A3340" />
             <Setter Property="BorderThickness" Value="1" />
+        </Style>
+        <Style Selector="Button.secondary:pointerover">
+            <Setter Property="Background" Value="#252E3A" />
+            <Setter Property="BorderBrush" Value="#3A4655" />
+        </Style>
+        <Style Selector="Button.filter-chip">
+            <Setter Property="Background" Value="#151A22" />
+            <Setter Property="Foreground" Value="#AAB3BF" />
+            <Setter Property="BorderBrush" Value="#242B36" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="7" />
+            <Setter Property="Padding" Value="9,6" />
+            <Setter Property="FontSize" Value="10" />
+        </Style>
+        <Style Selector="Button.filter-chip:pointerover">
+            <Setter Property="Background" Value="#1C252F" />
+            <Setter Property="BorderBrush" Value="#394555" />
+            <Setter Property="Foreground" Value="#E9EDF3" />
+        </Style>
+        <Style Selector="Button.filter-chip.active">
+            <Setter Property="Background" Value="#26341A" />
+            <Setter Property="BorderBrush" Value="#526B2D" />
+            <Setter Property="Foreground" Value="#C7F36B" />
+        </Style>
+        <Style Selector="Button.filter-chip.active:pointerover">
+            <Setter Property="Background" Value="#31451E" />
         </Style>
         <Style Selector="Button.nav">
             <Setter Property="HorizontalContentAlignment" Value="Left" />
