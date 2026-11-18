@@ -1,0 +1,62 @@
+name: Технічна задача
+description: Зафіксувати узгоджену роботу з критеріями приймання
+title: "[TASK] "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Для великої функції, зміни даних або API використовуй [шаблон технічного завдання](https://github.com/stanislavslobodyan/leopard-club-management/blob/main/docs/TECHNICAL-TASK-TEMPLATE.md).
+  - type: textarea
+    id: goal
+    attributes:
+      label: Мета та контекст
+      description: Який результат потрібен і чому?
+    validations:
+      required: true
+  - type: textarea
+    id: scope
+    attributes:
+      label: Обсяг роботи
+      description: Що саме потрібно зробити? Що не входить у задачу?
+    validations:
+      required: true
+  - type: textarea
+    id: technical
+    attributes:
+      label: Технічний підхід та вплив
+      description: Компоненти, дані, сумісність, ризики чи залежності.
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Критерії приймання
+      description: Перевірні умови завершення.
+      placeholder: |
+        - [ ] ...
+        - [ ] ...
+    validations:
+      required: true
+  - type: textarea
+    id: verification
+    attributes:
+      label: Перевірка
+      description: Команди або конкретні ручні сценарії.
+    validations:
+      required: true
+  - type: dropdown
+    id: priority
+    attributes:
+      label: Пріоритет
+      options:
+        - P0 — терміново
+        - P1 — високий
+        - P2 — звичайний
+        - P3 — низький
+    validations:
+      required: true
+  - type: textarea
+    id: dependencies
+    attributes:
+      label: Залежності та супровід
+      description: Пов’язані Issues, рішення й документація, що має оновитися.

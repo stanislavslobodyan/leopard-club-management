@@ -1,0 +1,62 @@
+name: Нова можливість
+description: Запропонувати функцію або зміну поведінки LEOPARD
+title: "[FEATURE] "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Для великих змін опиши вимоги докладніше за шаблоном docs/TECHNICAL-TASK-TEMPLATE.md.
+  - type: textarea
+    id: problem
+    attributes:
+      label: Проблема та користувач
+      description: Хто має цю потребу та що зараз заважає?
+    validations:
+      required: true
+  - type: textarea
+    id: outcome
+    attributes:
+      label: Бажаний результат
+      description: Що користувач має могти зробити після зміни?
+    validations:
+      required: true
+  - type: textarea
+    id: scope
+    attributes:
+      label: Межі зміни
+      description: Що входить у задачу, а що варто залишити поза нею?
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Критерії приймання
+      description: Перевірні умови, за якими команда прийме результат.
+      placeholder: |
+        - [ ] ...
+        - [ ] ...
+    validations:
+      required: true
+  - type: textarea
+    id: technical
+    attributes:
+      label: Технічний вплив
+      description: UI, SQLite, мережа, сумісність, безпека або розгортання, якщо відомо.
+  - type: dropdown
+    id: priority
+    attributes:
+      label: Попередній пріоритет
+      options:
+        - P0 — терміново
+        - P1 — високий
+        - P2 — звичайний
+        - P3 — низький
+    validations:
+      required: true
+  - type: textarea
+    id: verification
+    attributes:
+      label: Перевірка
+      description: Який сценарій покаже, що зміна працює?
+    validations:
+      required: true

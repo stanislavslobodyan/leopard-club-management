@@ -1,0 +1,58 @@
+name: Помилка
+description: Повідомити про відтворювану помилку в LEOPARD
+title: "[BUG] "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Опиши одну помилку. Репозиторій публічний: не додавай паролі, ключі, реальні телефони клієнтів або інші приватні дані.
+  - type: textarea
+    id: summary
+    attributes:
+      label: Що пішло не так?
+      description: Коротко опиши помилку та її наслідок.
+      placeholder: Після завершення сеансу...
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Як повторити помилку?
+      description: Кроки від запуску програми до появи помилки.
+      placeholder: |
+        1. Відкрий...
+        2. Натисни...
+        3. Побач...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Очікуваний і фактичний результат
+      description: Що мало статися та що сталося насправді?
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Середовище
+      description: Версія LEOPARD, Windows та, якщо важливо, конфігурація ПК.
+      placeholder: LEOPARD ..., Windows 11 ...
+    validations:
+      required: true
+  - type: dropdown
+    id: priority
+    attributes:
+      label: Попередній пріоритет
+      options:
+        - P0 — робота або дані критично заблоковані
+        - P1 — важлива функція не працює
+        - P2 — є обхідний шлях
+        - P3 — незначна незручність
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Додаткові матеріали
+      description: За потреби додай скриншот або очищений лог без персональних даних і секретів.
