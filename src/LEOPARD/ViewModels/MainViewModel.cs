@@ -13,16 +13,13 @@ namespace LEOPARD.ViewModels;
 public partial class MainViewModel : ViewModelBase
 {
     private readonly ClubRepository _repository = new();
-    private readonly ComputerAgentClient _agentClient = new();
     private readonly DispatcherTimer _clock;
     private IReadOnlyList<ClubSession> _sessionCache = [];
     private bool _returnToStartAfterClient;
     private readonly HashSet<(int SessionId, string Kind)> _checkedAlerts = [];
-    private readonly Dictionary<int, DateTime> _agentLastPolls = [];
     private DateTime _accrualDate = DateTime.Today;
     private decimal _todayAccruedAmount;
     private int _visitsThisMonth;
-    private bool _agentPollRunning;
 
     public MainViewModel()
     {
@@ -37,11 +34,6 @@ public partial class MainViewModel : ViewModelBase
             foreach (var session in ActiveSessions)
                 session.UpdateTime(now);
             CheckSessionAlerts(now);
-            if (Computers.Any(c => !string.IsNullOrWhiteSpace(c.AgentEndpoint) &&
-                now - _agentLastPolls.GetValueOrDefault(c.Id, DateTime.MinValue) >= TimeSpan.FromSeconds(Math.Clamp(c.AgentPollSeconds, 5, 300))))
-            {
-                _ = RefreshAgentStatusesAsync();
-            }
             if (SelectedFilter is "Менше 15 хв" or "Потрібна увага")
                 ApplySessionFilter();
             OnPropertyChanged(nameof(CurrentTimeText));
@@ -94,11 +86,9 @@ public partial class MainViewModel : ViewModelBase
     public int OverdueSessionCount => _sessionCache.Count(s => s.PlannedEnd <= DateTime.Now);
     public int FreeCount => Computers.Count(c => c.Status == "Вільний");
     public int ReservedCount => Computers.Count(c => c.Status == "Заброньований");
-    public int OfflineCount => Computers.Count(c => c.AgentStatus == "Offline");
     public GridLength ActiveSegmentWidth => new(ActiveCount, GridUnitType.Star);
     public GridLength FreeSegmentWidth => new(FreeCount, GridUnitType.Star);
     public GridLength ReservedSegmentWidth => new(ReservedCount, GridUnitType.Star);
-    public GridLength OfflineSegmentWidth => new(OfflineCount, GridUnitType.Star);
     public int ComputerCount => Computers.Count;
     public int ResponsiveCardColumns => IsCompact ? 1 : 4;
     public int ResponsiveMetricColumns => IsCompact ? 2 : 4;
@@ -156,15 +146,6 @@ public partial class MainViewModel : ViewModelBase
                 : $"{first.ComputerLabel} · {first.ClientName}: до завершення залишилося близько {Math.Ceiling(remaining.TotalMinutes)} хв.";
         }
     }
-    public int OnlineAgentCount => Computers.Count(c => c.AgentStatus == "Online");
-    public int ConfiguredAgentCount => Computers.Count(c => !string.IsNullOrWhiteSpace(c.AgentEndpoint));
-    public string AgentSummaryText => ConfiguredAgentCount == 0
-        ? "PC-агенти не налаштовані"
-        : $"{OnlineAgentCount} / {ConfiguredAgentCount} агентів онлайн";
-    public string AgentStatusColor => AgentStatusText == "Підключено" ? "#9FE2B2" : "#FFB454";
-    public string AgentDetailText => ConfiguredAgentCount == 0
-        ? "Стан ПК доступний після налаштування агента"
-        : $"Перевірено ПК: {ComputerCount}";
     public int UnreadNotificationCount => Notifications.Count(n => !n.IsRead);
     public bool HasNotifications => Notifications.Count > 0;
     public bool HasHistory => HistorySessions.Count > 0;
@@ -368,18 +349,7 @@ public partial class MainViewModel : ViewModelBase
     [ObservableProperty] private string newComputerMemory = "";
     [ObservableProperty] private string newComputerMonitor = "";
     [ObservableProperty] private string newComputerStorage = "";
-    [ObservableProperty] private string newComputerAgentEndpoint = "";
     [ObservableProperty] private string computerFormError = "";
-
-    [ObservableProperty] private bool isAgentDialogOpen;
-    [ObservableProperty] private ComputerCard? selectedAgentComputer;
-    [ObservableProperty] private string editAgentAddress = "";
-    [ObservableProperty] private string editAgentPort = "47831";
-    [ObservableProperty] private string editAgentClubServer = "";
-    [ObservableProperty] private string editAgentConnectionKey = "";
-    [ObservableProperty] private string editAgentPollSeconds = "15";
-    [ObservableProperty] private string agentStatusText = "Не підключено";
-    [ObservableProperty] private string agentLastCheckText = "Поки не перевірено";
 
     [ObservableProperty] private bool isTariffDialogOpen;
     [ObservableProperty] private string newTariffName = "";
@@ -475,7 +445,6 @@ public partial class MainViewModel : ViewModelBase
     }
     partial void OnNewClientEmailChanged(string value) => OnClientFormValueChanged();
     partial void OnNewClientBalanceChanged(string value) => OnClientFormValueChanged();
-    partial void OnAgentStatusTextChanged(string value) => OnPropertyChanged(nameof(AgentStatusColor));
 
     public string ComputerDialogTitle => EditingComputerId is null ? "Додати ПК" : "Редагувати ПК";
     public string ComputerDialogAction => EditingComputerId is null ? "Додати ПК" : "Зберегти зміни";
@@ -540,11 +509,9 @@ public partial class MainViewModel : ViewModelBase
         OnPropertyChanged(nameof(ActiveCount));
         OnPropertyChanged(nameof(FreeCount));
         OnPropertyChanged(nameof(ReservedCount));
-        OnPropertyChanged(nameof(OfflineCount));
         OnPropertyChanged(nameof(ActiveSegmentWidth));
         OnPropertyChanged(nameof(FreeSegmentWidth));
         OnPropertyChanged(nameof(ReservedSegmentWidth));
-        OnPropertyChanged(nameof(OfflineSegmentWidth));
         OnPropertyChanged(nameof(ComputerCount));
         OnPropertyChanged(nameof(HasNoComputers));
         OnPropertyChanged(nameof(ComputerArchiveToggleText));
@@ -576,10 +543,6 @@ public partial class MainViewModel : ViewModelBase
         OnPropertyChanged(nameof(HasNoUpcomingReservation));
         OnPropertyChanged(nameof(HasUrgentSessions));
         OnPropertyChanged(nameof(SessionAttentionText));
-        OnPropertyChanged(nameof(OnlineAgentCount));
-        OnPropertyChanged(nameof(ConfiguredAgentCount));
-        OnPropertyChanged(nameof(AgentSummaryText));
-        OnPropertyChanged(nameof(AgentDetailText));
     }
 
     private void RefreshAccruedAmount()
@@ -736,44 +699,6 @@ public partial class MainViewModel : ViewModelBase
         OnPropertyChanged(nameof(HasNotifications));
     }
 
-    private async Task RefreshAgentStatusesAsync()
-    {
-        if (_agentPollRunning) return;
-        var now = DateTime.Now;
-        var configured = Computers.Where(c => !string.IsNullOrWhiteSpace(c.AgentEndpoint) &&
-            now - _agentLastPolls.GetValueOrDefault(c.Id, DateTime.MinValue) >= TimeSpan.FromSeconds(Math.Clamp(c.AgentPollSeconds, 5, 300))).ToArray();
-        if (configured.Length == 0) return;
-        _agentPollRunning = true;
-        foreach (var computer in configured) _agentLastPolls[computer.Id] = now;
-        try
-        {
-            var results = await Task.WhenAll(configured.Select(async computer =>
-                (computer.Id, Status: await _agentClient.IsAvailableAsync(computer.AgentEndpoint, computer.AgentConnectionKey))));
-            foreach (var result in results)
-            {
-                var index = -1;
-                for (var i = 0; i < Computers.Count; i++)
-                    if (Computers[i].Id == result.Id) { index = i; break; }
-                if (index < 0) continue;
-                var updated = Computers[index] with { AgentStatus = result.Status ? "Online" : "Offline" };
-                Computers[index] = updated;
-                OnPropertyChanged(nameof(OfflineCount));
-                OnPropertyChanged(nameof(OfflineSegmentWidth));
-                if (SelectedAgentComputer?.Id == result.Id)
-                {
-                    AgentStatusText = result.Status ? "Підключено" : "Не підключено";
-                    AgentLastCheckText = $"Остання перевірка: {DateTime.Now:HH:mm}";
-                }
-                for (var i = 0; i < AvailableComputers.Count; i++)
-                    if (AvailableComputers[i].Id == result.Id) { AvailableComputers[i] = updated; break; }
-            }
-            OnPropertyChanged(nameof(OnlineAgentCount));
-            OnPropertyChanged(nameof(AgentSummaryText));
-            OnPropertyChanged(nameof(AgentDetailText));
-        }
-        finally { _agentPollRunning = false; }
-    }
-
     [RelayCommand]
     private void AcknowledgeNotification(int id)
     {
@@ -847,7 +772,6 @@ public partial class MainViewModel : ViewModelBase
         NewComputerMemory = item.Memory;
         NewComputerMonitor = item.Monitor;
         NewComputerStorage = item.Storage;
-        NewComputerAgentEndpoint = "";
         ComputerFormError = "";
         IsComputerDialogOpen = true;
     }
@@ -858,7 +782,6 @@ public partial class MainViewModel : ViewModelBase
         EditingComputerId = null;
         NewComputerLabel = ""; NewComputerZone = ZoneOptions.First(); NewComputerNetworkName = ""; NewComputerProcessor = ""; NewComputerGraphicsCard = "";
         NewComputerMemory = ""; NewComputerMonitor = ""; NewComputerStorage = ""; ComputerFormError = "";
-        NewComputerAgentEndpoint = "";
         IsComputerDialogOpen = true;
     }
 
@@ -875,7 +798,7 @@ public partial class MainViewModel : ViewModelBase
             ? _repository.UpdateComputer(computerId, NewComputerLabel, NewComputerZone, NewComputerNetworkName,
                 NewComputerProcessor, NewComputerGraphicsCard, NewComputerMemory, NewComputerMonitor, NewComputerStorage)
             : _repository.AddComputer(NewComputerLabel, NewComputerZone, NewComputerNetworkName, NewComputerProcessor,
-                NewComputerGraphicsCard, NewComputerMemory, NewComputerMonitor, NewComputerStorage, NewComputerAgentEndpoint) != 0;
+                NewComputerGraphicsCard, NewComputerMemory, NewComputerMonitor, NewComputerStorage) != 0;
         if (!saved) { ComputerFormError = "Перевірте поля. Назва ПК має бути унікальною."; return; }
         IsComputerDialogOpen = false;
         EditingComputerId = null;
@@ -891,42 +814,6 @@ public partial class MainViewModel : ViewModelBase
         IsComputerDialogOpen = false;
         EditingComputerId = null;
     }
-
-    [RelayCommand]
-    private void ConfigureComputerAgent(int computerId)
-    {
-        SelectedAgentComputer = Computers.FirstOrDefault(c => c.Id == computerId);
-        if (SelectedAgentComputer is null) return;
-        EditAgentAddress = Uri.TryCreate(SelectedAgentComputer.AgentEndpoint, UriKind.Absolute, out var endpointUri)
-            ? endpointUri.Host
-            : SelectedAgentComputer.NetworkName;
-        EditAgentPort = SelectedAgentComputer.AgentPort.ToString(CultureInfo.InvariantCulture);
-        EditAgentClubServer = SelectedAgentComputer.AgentClubServer;
-        EditAgentConnectionKey = SelectedAgentComputer.AgentConnectionKey;
-        EditAgentPollSeconds = SelectedAgentComputer.AgentPollSeconds.ToString(CultureInfo.InvariantCulture);
-        AgentStatusText = SelectedAgentComputer.AgentStatus == "Online" ? "Підключено" : "Не підключено";
-        AgentLastCheckText = "Остання перевірка: —";
-        ComputerFormError = "";
-        IsAgentDialogOpen = true;
-    }
-
-    [RelayCommand]
-    private void SaveComputerAgentEndpoint()
-    {
-        if (!int.TryParse(EditAgentPort, out var port) || !int.TryParse(EditAgentPollSeconds, out var pollSeconds) ||
-            SelectedAgentComputer is null || !_repository.UpdateComputerAgentConfiguration(SelectedAgentComputer.Id,
-                EditAgentAddress, port, EditAgentClubServer, EditAgentConnectionKey, pollSeconds))
-        {
-            ComputerFormError = "Вкажіть адресу ПК, порт 1024–65535 і інтервал 5–300 секунд.";
-            return;
-        }
-        IsAgentDialogOpen = false;
-        Refresh();
-        _agentLastPolls.Remove(SelectedAgentComputer.Id);
-        StatusMessage = $"Налаштування агента для {SelectedAgentComputer.ComputerLabel} оновлено.";
-    }
-
-    [RelayCommand] private void CancelAgentDialog() => IsAgentDialogOpen = false;
 
     [RelayCommand]
     private void ShowNewTariffDialog()

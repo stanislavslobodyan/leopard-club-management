@@ -59,11 +59,6 @@ public sealed class ClubRepository
         EnsureColumn(connection, "Sessions", "PointsAwarded", "INTEGER NOT NULL DEFAULT 0");
         EnsureColumn(connection, "Sessions", "ChargeAmount", "REAL NULL");
         EnsureColumn(connection, "Sessions", "HourlyRateSnapshot", "REAL NULL");
-        EnsureColumn(connection, "Computers", "AgentEndpoint", "TEXT NOT NULL DEFAULT ''");
-        EnsureColumn(connection, "Computers", "AgentClubServer", "TEXT NOT NULL DEFAULT ''");
-        EnsureColumn(connection, "Computers", "AgentPort", "INTEGER NOT NULL DEFAULT 47831");
-        EnsureColumn(connection, "Computers", "AgentConnectionKey", "TEXT NOT NULL DEFAULT ''");
-        EnsureColumn(connection, "Computers", "AgentPollSeconds", "INTEGER NOT NULL DEFAULT 15");
         EnsureColumn(connection, "Tariffs", "DurationMinutes", "INTEGER NOT NULL DEFAULT 60");
         EnsureColumn(connection, "Tariffs", "PackagePrice", "REAL NULL");
         EnsureColumn(connection, "Tariffs", "Availability", "TEXT NOT NULL DEFAULT 'Увесь день · усі комп’ютери'");
@@ -256,7 +251,7 @@ public sealed class ClubRepository
     {
         var sessions=GetActiveSessions();
         using var db=Open(); using var cmd=db.CreateCommand();
-        cmd.CommandText="SELECT Id,Label,Zone,Processor,GraphicsCard,Memory,Monitor,Storage,AgentEndpoint,NetworkName,AgentClubServer,AgentPort,AgentConnectionKey,AgentPollSeconds,IsArchived FROM Computers WHERE ($all=1 OR IsArchived=0) ORDER BY Id;";
+        cmd.CommandText="SELECT Id,Label,Zone,Processor,GraphicsCard,Memory,Monitor,Storage,NetworkName,IsArchived FROM Computers WHERE ($all=1 OR IsArchived=0) ORDER BY Id;";
         cmd.Parameters.AddWithValue("$all", includeArchived ? 1 : 0);
         using var reader=cmd.ExecuteReader(); var result=new List<ComputerCard>();
         while(reader.Read())
@@ -267,10 +262,9 @@ public sealed class ClubRepository
             var details = session is not null ? $"{session.ClientName} · {session.Game}"
                 : status == "Заброньований" ? "Є майбутнє бронювання" : "Готовий до сеансу";
             result.Add(new ComputerCard(id,label,zone,status,details,reader.GetString(3),reader.GetString(4),
-                reader.GetString(5),reader.GetString(6),reader.GetString(7),reader.GetString(8),"Unknown")
+                reader.GetString(5),reader.GetString(6),reader.GetString(7))
             {
-                NetworkName = reader.GetString(9), AgentClubServer = reader.GetString(10), AgentPort = reader.GetInt32(11),
-                AgentConnectionKey = reader.GetString(12), AgentPollSeconds = reader.GetInt32(13), IsArchived = reader.GetInt32(14) != 0
+                NetworkName = reader.GetString(8), IsArchived = reader.GetInt32(9) != 0
             });
         }
         return result;
@@ -300,18 +294,17 @@ public sealed class ClubRepository
         return list;
     }
 
-    public int AddComputer(string label, string zone, string networkName, string processor, string graphicsCard, string memory, string monitor, string storage, string agentEndpoint)
+    public int AddComputer(string label, string zone, string networkName, string processor, string graphicsCard, string memory, string monitor, string storage)
     {
         label = label.Trim(); zone = zone.Trim();
-        var normalizedAgentEndpoint = NormalizeAgentEndpoint(agentEndpoint);
-        if (label.Length < 2 || string.IsNullOrWhiteSpace(zone) || normalizedAgentEndpoint is null) return 0;
+        if (label.Length < 2 || string.IsNullOrWhiteSpace(zone)) return 0;
         using var db = Open(); using var cmd = db.CreateCommand();
-        cmd.CommandText = "INSERT INTO Computers(Label,Zone,NetworkName,Processor,GraphicsCard,Memory,Monitor,Storage,AgentEndpoint) VALUES($label,$zone,$network,$cpu,$gpu,$ram,$monitor,$storage,$agent); SELECT last_insert_rowid();";
+        cmd.CommandText = "INSERT INTO Computers(Label,Zone,NetworkName,Processor,GraphicsCard,Memory,Monitor,Storage) VALUES($label,$zone,$network,$cpu,$gpu,$ram,$monitor,$storage); SELECT last_insert_rowid();";
         cmd.Parameters.AddWithValue("$label", label); cmd.Parameters.AddWithValue("$zone", zone);
         cmd.Parameters.AddWithValue("$network", networkName.Trim());
         cmd.Parameters.AddWithValue("$cpu", processor.Trim()); cmd.Parameters.AddWithValue("$gpu", graphicsCard.Trim());
         cmd.Parameters.AddWithValue("$ram", memory.Trim()); cmd.Parameters.AddWithValue("$monitor", monitor.Trim());
-        cmd.Parameters.AddWithValue("$storage", storage.Trim()); cmd.Parameters.AddWithValue("$agent", normalizedAgentEndpoint);
+        cmd.Parameters.AddWithValue("$storage", storage.Trim());
         try { return Convert.ToInt32(cmd.ExecuteScalar()); }
         catch (SqliteException ex) when (ex.SqliteErrorCode == 19) { return 0; }
     }
@@ -353,52 +346,6 @@ public sealed class ClubRepository
         cmd.Parameters.AddWithValue("$archived", archived ? 1 : 0);
         cmd.Parameters.AddWithValue("$id", id);
         return cmd.ExecuteNonQuery() == 1;
-    }
-
-    public bool UpdateComputerAgentEndpoint(int computerId, string agentEndpoint)
-    {
-        var normalizedAgentEndpoint = NormalizeAgentEndpoint(agentEndpoint);
-        if (normalizedAgentEndpoint is null) return false;
-        using var db=Open(); using var cmd=db.CreateCommand();
-        cmd.CommandText="UPDATE Computers SET AgentEndpoint=$endpoint WHERE Id=$id;";
-        cmd.Parameters.AddWithValue("$endpoint",normalizedAgentEndpoint); cmd.Parameters.AddWithValue("$id",computerId);
-        return cmd.ExecuteNonQuery()==1;
-    }
-
-    public bool UpdateComputerAgentConfiguration(int computerId, string address, int port, string clubServer, string connectionKey, int pollSeconds)
-    {
-        var normalizedAddress = NormalizeAgentEndpoint(address, port);
-        if (normalizedAddress is null || string.IsNullOrWhiteSpace(address) || port is < 1024 or > 65535 || pollSeconds is < 5 or > 300) return false;
-        using var db = Open(); using var cmd = db.CreateCommand();
-        cmd.CommandText = "UPDATE Computers SET AgentEndpoint=$endpoint,AgentPort=$port,AgentClubServer=$server,AgentConnectionKey=$key,AgentPollSeconds=$poll WHERE Id=$id;";
-        cmd.Parameters.AddWithValue("$endpoint", normalizedAddress);
-        cmd.Parameters.AddWithValue("$port", port);
-        cmd.Parameters.AddWithValue("$server", clubServer.Trim());
-        cmd.Parameters.AddWithValue("$key", connectionKey.Trim());
-        cmd.Parameters.AddWithValue("$poll", pollSeconds);
-        cmd.Parameters.AddWithValue("$id", computerId);
-        return cmd.ExecuteNonQuery() == 1;
-    }
-
-    private static string? NormalizeAgentEndpoint(string endpoint)
-    {
-        endpoint = endpoint.Trim().TrimEnd('/');
-        if (endpoint.Length == 0) return "";
-        if (!Uri.TryCreate(endpoint, UriKind.Absolute, out var uri) ||
-            uri.Scheme is not ("http" or "https") || string.IsNullOrWhiteSpace(uri.Host) ||
-            !string.IsNullOrEmpty(uri.UserInfo) || !string.IsNullOrEmpty(uri.Query) || !string.IsNullOrEmpty(uri.Fragment) ||
-            uri.AbsolutePath is not ("" or "/")) return null;
-        return uri.GetLeftPart(UriPartial.Authority);
-    }
-
-    private static string? NormalizeAgentEndpoint(string address, int port)
-    {
-        address = address.Trim();
-        if (address.Length == 0) return "";
-        if (Uri.TryCreate(address, UriKind.Absolute, out var existing) && existing.Scheme is "http" or "https")
-            return NormalizeAgentEndpoint(existing.GetLeftPart(UriPartial.Authority));
-        if (address.Contains('/') || address.Contains('@') || address.Contains('?') || address.Contains('#')) return null;
-        return NormalizeAgentEndpoint($"http://{address}:{port}");
     }
 
     public int AddTariff(string name, string description, int durationMinutes, decimal packagePrice, string availability, string badge)

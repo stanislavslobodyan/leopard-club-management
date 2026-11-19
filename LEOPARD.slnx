@@ -1,6 +1,5 @@
 <Solution>
   <Folder Name="/src/">
     <Project Path="src/LEOPARD/LEOPARD.csproj" />
-    <Project Path="src/LEOPARD.PcAgent/LEOPARD.PcAgent.csproj" />
   </Folder>
 </Solution>

@@ -42,15 +42,9 @@ public sealed record ComputerCard(
     string GraphicsCard,
     string Memory,
     string Monitor,
-    string Storage,
-    string AgentEndpoint,
-    string AgentStatus)
+    string Storage)
 {
     public string NetworkName { get; init; } = "";
-    public string AgentClubServer { get; init; } = "";
-    public int AgentPort { get; init; } = 47831;
-    public string AgentConnectionKey { get; init; } = "";
-    public int AgentPollSeconds { get; init; } = 15;
     public bool IsArchived { get; init; }
     public bool CanEdit => !IsArchived;
     public string ArchiveActionText => IsArchived ? "↶" : "▱";
@@ -65,20 +59,6 @@ public sealed record ComputerCard(
     };
 
     public string ChoiceText => $"{ComputerLabel} · {Zone} · {Processor}";
-    public string AgentConnectionText => string.IsNullOrWhiteSpace(AgentEndpoint)
-        ? "Агент не налаштовано"
-        : AgentStatus switch
-        {
-            "Online" => "Агент на зв’язку",
-            "Offline" => "Агент недоступний",
-            _ => "Очікує перевірки"
-        };
-    public string AgentConnectionColor => AgentStatus switch
-    {
-        "Online" => "#9FE2B2",
-        "Offline" => "#FFB454",
-        _ => "#929BA8"
-    };
 }
 
 public sealed record ClientCard(
