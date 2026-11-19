@@ -12,8 +12,6 @@ public sealed class ClubRepository
     {
         var folder = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "LEOPARD");
         Directory.CreateDirectory(folder);
-        // The production store is separate from the old development database. That
-        // file is intentionally left untouched so a user can recover its contents.
         _connectionString = new SqliteConnectionStringBuilder { DataSource = Path.Combine(folder, "club.sqlite3") }.ToString();
         Initialize();
     }
@@ -78,8 +76,6 @@ public sealed class ClubRepository
         }
         using (var migrate = connection.CreateCommand())
         {
-            // Legacy clients do not have a reliable registration date. Keep them out
-            // of the "new this month" metric instead of making them appear newly added.
             migrate.CommandText = "UPDATE Clients SET CreatedAt='2000-01-01T00:00:00' WHERE CreatedAt='';";
             migrate.ExecuteNonQuery();
         }
